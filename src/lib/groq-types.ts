@@ -74,8 +74,37 @@ export interface LoggerChatContext {
   usdPhpProvider?: string
   projects?: string[]
   recentDescriptions?: string[]
+  checkIn?: {
+    dateLabel?: string
+    weekKey?: string
+    projects?: string
+    currentlyWorking?: { client?: string; task?: string }
+    completedCount?: number
+    completedPreview?: Array<{ client: string; task: string }>
+    pending?: string
+    hasBlocker?: boolean
+    eta?: string
+  }
+  checkInWorklogPreview?: Array<{
+    time: string
+    project: string
+    description: string
+    qtyHours: number
+  }>
 }
 
 export interface LoggerChatResult {
   reply: string
+}
+
+export interface ProposedCheckInResult {
+  analysis?: string
+  projects: string
+  currentlyWorking: { client: string; task: string }
+  completed: Array<{ client: string; task: string }>
+  pending: string
+  blocker: { issue: string; pointPerson: string }
+  helpFrom: string
+  eta: string
+  notes: string[]
 }

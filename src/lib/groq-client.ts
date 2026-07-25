@@ -4,6 +4,7 @@ import type {
   LoggerChatContext,
   LoggerChatMessage,
   LoggerChatResult,
+  ProposedCheckInResult,
 } from './groq-types'
 import type { WorklogEntry } from './invoice-model'
 import { withWorklogIdentity } from './invoice-model'
@@ -14,6 +15,7 @@ export type {
   LoggerChatContext,
   LoggerChatMessage,
   LoggerChatResult,
+  ProposedCheckInResult,
 }
 
 import { apiJson } from './api-client'
@@ -43,6 +45,39 @@ export async function requestLoggerChat(input: {
   context?: LoggerChatContext
 }): Promise<LoggerChatResult> {
   return postJson<LoggerChatResult>('/api/logger-chat', input)
+}
+
+export async function requestProposeCheckIn(input: {
+  contractorName?: string
+  dateLabel?: string
+  weekKey?: string
+  reportScope?: {
+    startDate: string
+    endDate: string
+    reportDay: string
+    label: string
+    coverage: string
+    mode?: string
+  }
+  existingDraft?: {
+    projects?: string
+    currentlyWorking?: { client?: string; task?: string }
+    completed?: Array<{ client: string; task: string }>
+    pending?: string
+    blocker?: { issue?: string; pointPerson?: string }
+    helpFrom?: string
+    eta?: string
+  }
+  worklogEntries: Array<{
+    time: string
+    project: string
+    description: string
+    qtyHours: number
+    estDate?: string
+    inReportScope?: boolean
+  }>
+}): Promise<ProposedCheckInResult> {
+  return postJson<ProposedCheckInResult>('/api/propose-checkin', input)
 }
 
 export function normalizeAiEntries(

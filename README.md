@@ -27,6 +27,7 @@ Typical flow:
 - **AI invoice report** — Review step summarizes scope, project mix, and data-quality risks
 - **USD → PHP conversion** — live mid-market rate shown on billable totals; Logger uses the same rate
 - **Invoice history** — exported invoices are saved on-device for later review and re-download
+- **Contractor check-ins** — Mon/Wed/Fri productivity reports (Alchemy Dev Section 7) with Slack-ready copy; choose week-to-date (Sat→report day) or since-last-check-in (Mon Sat–Mon / Wed Tue–Wed / Fri Thu–Fri); prefill from worklogs or Draft with Logger; Completed must match billing
 - **Time adjustments** — increase/decrease entry hours, bulk adjust billable rows, or add manual adjustment entries
 - **Project paths / OneDrive** — save local folders or OneDrive share links and fetch `.md` worklogs
 - **Private Microsoft login** — app and APIs require sign-in; optional email allowlist
@@ -107,8 +108,8 @@ Serve `dist/` behind your host (e.g. Apache/Laragon virtual host for `nlog.kaila
 src/
 ├── components/     # UI, forms, wizard steps
 ├── lib/            # parser, timeline, totals, exporters, Groq client
-├── pages/          # GeneratePage wizard
-└── store/          # Zustand invoice state
+├── pages/          # GeneratePage, CheckInPage, HistoryPage
+└── store/          # Zustand invoice + check-in state
 
 api/
 ├── enhance-worklog.ts   # Groq worklog repair

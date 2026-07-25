@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { MessageCircle, Send, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { useAuth } from '@/auth/auth-provider'
 import { Button } from '@/components/ui/button'
 import { requestLoggerChat } from '@/lib/groq-client'
-import type { LoggerChatMessage } from '@/lib/groq-types'
+import type { LoggerChatMessage, ProposedCheckInResult } from '@/lib/groq-types'
+import {
+  applyProposedCheckInDraft,
+  proposeCheckInDraftOnly,
+} from '@/lib/checkin-autofill'
 import { calculateTotals } from '@/lib/calculate-totals'
 import { convertUsdToPhp } from '@/lib/exchange-rate'
 import {
@@ -17,20 +22,25 @@ import {
 } from '@/lib/timeline'
 import { cn } from '@/lib/utils'
 import { useUsdPhpRate } from '@/hooks/use-usd-php-rate'
+import { useCheckInStore } from '@/store/checkin-store'
 import { useInvoiceHistoryStore } from '@/store/invoice-history-store'
 import { useInvoiceStore } from '@/store/invoice-store'
 
 const WELCOME: LoggerChatMessage = {
   role: 'assistant',
   content:
-    "Hi — I'm Logger. I can help with worklog markdown, timeline filtering, rates, and invoice review. What do you need?",
+    "Hi — I'm Logger. I can help with worklogs, invoices, FX, and Mon/Wed/Fri check-ins. What do you need?",
 }
 
 const SUGGESTIONS = [
+  'Draft my check-in from worklogs',
   'What worklog format does NLog expect?',
   'How do I adjust worked hours?',
   'Convert my total due to PHP',
 ]
+
+const DRAFT_CHECKIN_RE =
+  /\b(draft|fill|prefill|write|prepare|create).{0,40}\bcheck[-\s]?in\b|\bcheck[-\s]?in\b.{0,40}\b(draft|fill|prefill)\b/i
 
 const THINKING_LABELS = ['Thinking', 'Reading your context', 'Drafting a reply']
 
@@ -74,9 +84,12 @@ export function LoggerChat() {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<LoggerChatMessage[]>([WELCOME])
   const [isSending, setIsSending] = useState(false)
+  const [pendingCheckIn, setPendingCheckIn] =
+    useState<ProposedCheckInResult | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
+  const { displayName } = useAuth()
   const {
     step,
     worklogFiles,
@@ -87,6 +100,7 @@ export function LoggerChat() {
     form,
   } = useInvoiceStore()
 
+  const checkInDraft = useCheckInStore((state) => state.draft)
   const { rate: usdPhpRate } = useUsdPhpRate()
   const historyEntries = useInvoiceHistoryStore((state) => state.entries)
 
@@ -132,6 +146,11 @@ export function LoggerChat() {
         isManualAdjustment: Boolean(entry.isManualAdjustment),
       }))
 
+    const completedPreview = checkInDraft.completed
+      .filter((item) => item.client.trim() || item.task.trim())
+      .slice(0, 8)
+      .map((item) => ({ client: item.client, task: item.task }))
+
     return {
       step,
       worklogFileCount: worklogFiles.length,
@@ -170,14 +189,12 @@ export function LoggerChat() {
         rate != null ? convertUsdToPhp(form.hourlyRateUsd, rate) : undefined,
       taxPercent: form.taxPercent,
       discountUsd: form.discountUsd,
-      // Authoritative invoice / Billable Amount figures (timeline-filtered when set)
       totalHours: billableTotals.totalHours,
       subtotalUsd: billableTotals.subtotal,
       taxAmountUsd: billableTotals.taxAmount,
       totalDue: billableTotals.totalDue,
       totalDuePhp:
         rate != null ? convertUsdToPhp(billableTotals.totalDue, rate) : undefined,
-      // Unfiltered parsed worklog totals (do NOT use as invoice total when timeline is set)
       allLineItemCount: lineItems.length,
       allTotalHours: allTotals.totalHours,
       allTotalDue: allTotals.totalDue,
@@ -188,6 +205,23 @@ export function LoggerChat() {
       recentDescriptions: billableItems
         .slice(-5)
         .map((item) => item.description.slice(0, 160)),
+      checkIn: {
+        dateLabel: checkInDraft.dateLabel || undefined,
+        weekKey: checkInDraft.weekKey || undefined,
+        projects: checkInDraft.projects || undefined,
+        currentlyWorking: checkInDraft.currentlyWorking,
+        completedCount: completedPreview.length,
+        completedPreview,
+        pending: checkInDraft.pending || undefined,
+        hasBlocker: Boolean(checkInDraft.blocker.issue.trim()),
+        eta: checkInDraft.eta || undefined,
+      },
+      checkInWorklogPreview: billableItems.slice(-8).map((item) => ({
+        time: item.time,
+        project: item.project,
+        description: item.description.slice(0, 160),
+        qtyHours: item.qtyHours,
+      })),
     }
   }, [
     step,
@@ -199,13 +233,69 @@ export function LoggerChat() {
     form,
     usdPhpRate,
     historyEntries,
+    checkInDraft,
   ])
 
   useEffect(() => {
     if (!open) return
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
     inputRef.current?.focus()
-  }, [open, messages, isSending])
+  }, [open, messages, isSending, pendingCheckIn])
+
+  const runCheckInDraftFlow = async (nextMessages: LoggerChatMessage[]) => {
+    try {
+      const { proposed, notes } = await proposeCheckInDraftOnly({
+        displayName: displayName || undefined,
+      })
+      if (!proposed) {
+        const detail = notes[0] || 'No worklog markdown available yet.'
+        setMessages([
+          ...nextMessages,
+          {
+            role: 'assistant',
+            content: `I couldn't draft a check-in yet. ${detail}\n\nLoad worklogs on Generate (or save project paths / OneDrive), then ask me again — or use Prefill from worklogs / Draft with Logger on the Check-in page.`,
+          },
+        ])
+        return
+      }
+
+      setPendingCheckIn(proposed)
+      const preview = [
+        proposed.currentlyWorking.client
+          ? `Current: ${proposed.currentlyWorking.client} — ${proposed.currentlyWorking.task}`
+          : null,
+        proposed.completed.length
+          ? `Completed (${proposed.completed.length}): ${proposed.completed
+              .slice(0, 3)
+              .map((item) => item.client)
+              .join(', ')}${proposed.completed.length > 3 ? '…' : ''}`
+          : null,
+        proposed.eta ? `ETA: ${proposed.eta}` : null,
+        ...(proposed.notes ?? []).slice(0, 2),
+      ]
+        .filter(Boolean)
+        .join('\n')
+
+      setMessages([
+        ...nextMessages,
+        {
+          role: 'assistant',
+          content: `I drafted a check-in from your worklogs. Review the Apply card below — nothing is written until you confirm.\n\n${preview}`,
+        },
+      ])
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Check-in draft failed.'
+      toast.error(message)
+      setMessages([
+        ...nextMessages,
+        {
+          role: 'assistant',
+          content: `I hit a snag drafting the check-in: ${message}`,
+        },
+      ])
+    }
+  }
 
   const sendMessage = async (raw: string) => {
     const content = raw.trim()
@@ -215,8 +305,14 @@ export function LoggerChat() {
     setMessages(nextMessages)
     setInput('')
     setIsSending(true)
+    setPendingCheckIn(null)
 
     try {
+      if (DRAFT_CHECKIN_RE.test(content)) {
+        await runCheckInDraftFlow(nextMessages)
+        return
+      }
+
       const result = await requestLoggerChat({
         messages: nextMessages,
         context,
@@ -236,6 +332,21 @@ export function LoggerChat() {
     } finally {
       setIsSending(false)
     }
+  }
+
+  const handleApplyCheckIn = () => {
+    if (!pendingCheckIn) return
+    applyProposedCheckInDraft(pendingCheckIn, displayName || undefined)
+    setPendingCheckIn(null)
+    toast.success('Check-in draft applied. Open Check-in to review and copy for Slack.')
+    setMessages((current) => [
+      ...current,
+      {
+        role: 'assistant',
+        content:
+          'Applied. Open the Check-in tab to review fields, then Save & copy for Slack.',
+      },
+    ])
   }
 
   const handleSubmit = (event: FormEvent) => {
@@ -308,6 +419,44 @@ export function LoggerChat() {
               </div>
             ))}
             {isSending && <LoggerThinkingLoader />}
+            {pendingCheckIn && !isSending && (
+              <div className="rounded-xl border border-nlog-border bg-white p-3 text-sm shadow-sm">
+                <p className="font-medium text-nlog-navy">Proposed check-in</p>
+                <p className="mt-1 text-xs text-nlog-slate">
+                  {pendingCheckIn.projects || 'Projects from worklogs'}
+                </p>
+                <ul className="mt-2 max-h-36 space-y-2 overflow-y-auto text-xs text-nlog-navy">
+                  {pendingCheckIn.completed.slice(0, 6).map((item, index) => (
+                    <li key={`${item.client}-${index}`}>
+                      <p className="font-medium">
+                        Client {index + 1} - {item.client}
+                      </p>
+                      <p className="text-nlog-slate">Task:</p>
+                      {item.task
+                        .split('\n')
+                        .map((line) => line.trim())
+                        .filter(Boolean)
+                        .map((line) => (
+                          <p key={line}>{line}</p>
+                        ))}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-3 flex gap-2">
+                  <Button type="button" size="sm" onClick={handleApplyCheckIn}>
+                    Apply to Check-in
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setPendingCheckIn(null)}
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {messages.length <= 1 && !isSending && (

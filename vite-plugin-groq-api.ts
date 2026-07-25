@@ -11,10 +11,12 @@ import {
   chatWithLogger,
   enhanceWorklogWithGroq,
   generateInvoiceReportWithGroq,
+  proposeCheckInDraftWithGroq,
   requireApiKey,
   type EnhanceWorklogInput,
   type InvoiceReportInput,
   type LoggerChatInput,
+  type ProposeCheckInInput,
 } from './server/groq.js'
 import { buildPasswordAuthEnv } from './server/password-auth-env.js'
 import {
@@ -305,6 +307,22 @@ export function groqApiPlugin(): Plugin {
               return
             }
             const result = await chatWithLogger(apiKey, input)
+            sendJson(res, 200, result)
+            return
+          }
+
+          if (url === '/api/propose-checkin') {
+            const input = body as ProposeCheckInInput
+            if (
+              !Array.isArray(input?.worklogEntries) ||
+              input.worklogEntries.length === 0
+            ) {
+              sendJson(res, 400, {
+                error: 'worklogEntries array is required',
+              })
+              return
+            }
+            const result = await proposeCheckInDraftWithGroq(apiKey, input)
             sendJson(res, 200, result)
             return
           }

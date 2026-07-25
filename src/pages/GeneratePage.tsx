@@ -15,6 +15,9 @@ import { InvoiceAiReport } from '@/components/invoice-ai-report'
 import { ExportActions } from '@/components/export-actions'
 import { Button } from '@/components/ui/button'
 import { useInvoiceHistoryStore } from '@/store/invoice-history-store'
+import { useCheckInStore } from '@/store/checkin-store'
+import { completedLinesForWeek, splitCompletedTasks } from '@/lib/checkin-model'
+import { useMemo } from 'react'
 
 const STEPS = ['Worklog', 'Details', 'Review']
 
@@ -34,6 +37,11 @@ export function GeneratePage({
     form,
   } = useInvoiceStore()
   const historyCount = useInvoiceHistoryStore((state) => state.entries.length)
+  const checkInEntries = useCheckInStore((state) => state.entries)
+  const weekCompleted = useMemo(
+    () => completedLinesForWeek(checkInEntries),
+    [checkInEntries],
+  )
 
   const canProceedFromWorklog =
     lineItems.length > 0 && parseErrors.length === 0
@@ -152,6 +160,46 @@ export function GeneratePage({
               {timelineFilter.unparseable.length} entr
               {timelineFilter.unparseable.length === 1 ? 'y has' : 'ies have'} a
               time format that could not be parsed and were excluded.
+            </p>
+          )}
+          {weekCompleted.length > 0 ? (
+            <div className="rounded-xl border border-nlog-border bg-white px-4 py-3">
+              <p className="text-sm font-medium text-nlog-navy">
+                Check-in Completed this week
+              </p>
+              <p className="mt-1 text-xs text-nlog-slate">
+                Per Alchemy Dev standards, this list must match what you bill.
+                Confirm invoice line items cover these deliverables.
+              </p>
+              <ul className="mt-2 space-y-3 text-sm text-nlog-navy">
+                {weekCompleted.map((item, index) => (
+                  <li key={item.id}>
+                    <p className="font-medium">
+                      Client {index + 1} - {item.client}
+                    </p>
+                    <p className="mt-0.5 text-xs font-medium text-nlog-slate">
+                      Task:
+                    </p>
+                    <ul className="mt-0.5 space-y-0.5 text-nlog-navy">
+                      {splitCompletedTasks(item.task).map((task) => (
+                        <li key={task}>{task}</li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                className="mt-2 text-xs font-medium text-nlog-accent hover:underline"
+                onClick={() => onNavigate('checkin')}
+              >
+                Open Check-in
+              </button>
+            </div>
+          ) : (
+            <p className="rounded-lg bg-slate-100 px-3 py-2 text-xs text-nlog-slate">
+              No check-in Completed items for this week yet. When you file
+              Mon/Wed/Fri reports, they appear here so billed work stays aligned.
             </p>
           )}
           <LineItemsTable

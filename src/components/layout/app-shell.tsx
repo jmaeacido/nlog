@@ -1,11 +1,11 @@
 import { type ReactNode, useState } from 'react'
-import { FilePlus2, History, LogOut } from 'lucide-react'
+import { ClipboardList, FilePlus2, History, LogOut } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/auth/auth-provider'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-export type AppView = 'generate' | 'history'
+export type AppView = 'generate' | 'history' | 'checkin'
 
 export function AppShell({
   children,
@@ -64,6 +64,19 @@ export function AppShell({
                 >
                   <FilePlus2 className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">Generate</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('checkin')}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition',
+                    activeView === 'checkin'
+                      ? 'bg-white text-nlog-navy shadow-sm'
+                      : 'text-nlog-slate hover:text-nlog-navy',
+                  )}
+                >
+                  <ClipboardList className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Check-in</span>
                 </button>
                 <button
                   type="button"

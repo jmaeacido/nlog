@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AuthProvider, useAuth } from '@/auth/auth-provider'
+import { CheckInPage } from '@/pages/CheckInPage'
 import { GeneratePage } from '@/pages/GeneratePage'
 import { HistoryPage } from '@/pages/HistoryPage'
 import { LoginPage } from '@/pages/LoginPage'
@@ -12,11 +13,9 @@ function AuthenticatedApp() {
 
   return (
     <>
-      {view === 'generate' ? (
-        <GeneratePage onNavigate={setView} />
-      ) : (
-        <HistoryPage onNavigate={setView} />
-      )}
+      {view === 'generate' && <GeneratePage onNavigate={setView} />}
+      {view === 'checkin' && <CheckInPage onNavigate={setView} />}
+      {view === 'history' && <HistoryPage onNavigate={setView} />}
       <InstallPrompt />
       <LoggerChat />
     </>
