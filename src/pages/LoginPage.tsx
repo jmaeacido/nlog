@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { KeyRound, LogIn, Shield, UserPlus } from 'lucide-react'
+import { KeyRound, Mail, Shield, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/auth/auth-provider'
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,22 @@ import { cn } from '@/lib/utils'
 
 type AuthTab = 'email' | 'microsoft'
 type EmailMode = 'login' | 'register' | 'forgot' | 'reset'
+
+function MicrosoftIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 21 21"
+      className={className}
+      aria-hidden
+      focusable="false"
+    >
+      <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+      <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+      <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+      <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+    </svg>
+  )
+}
 
 function readResetTokenFromUrl(): string | null {
   if (typeof window === 'undefined') return null
@@ -220,7 +236,7 @@ export function LoginPage() {
                   <button
                     type="button"
                     className={cn(
-                      'flex-1 rounded-md px-3 py-2 text-xs font-medium transition',
+                      'inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium transition',
                       tab === 'email'
                         ? 'bg-white text-nlog-navy shadow-sm'
                         : 'text-nlog-slate hover:text-nlog-navy',
@@ -228,12 +244,13 @@ export function LoginPage() {
                     onClick={() => setTab('email')}
                     disabled={!passwordEnabled}
                   >
+                    <Mail className="h-3.5 w-3.5" />
                     Email
                   </button>
                   <button
                     type="button"
                     className={cn(
-                      'flex-1 rounded-md px-3 py-2 text-xs font-medium transition',
+                      'inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium transition',
                       tab === 'microsoft'
                         ? 'bg-white text-nlog-navy shadow-sm'
                         : 'text-nlog-slate hover:text-nlog-navy',
@@ -241,6 +258,7 @@ export function LoginPage() {
                     onClick={() => setTab('microsoft')}
                     disabled={!microsoftEnabled}
                   >
+                    <MicrosoftIcon className="h-3.5 w-3.5" />
                     Microsoft
                   </button>
                 </div>
@@ -344,7 +362,7 @@ export function LoginPage() {
                     ) : mode === 'forgot' || mode === 'reset' ? (
                       <KeyRound className="h-4 w-4" />
                     ) : (
-                      <LogIn className="h-4 w-4" />
+                      <Mail className="h-4 w-4" />
                     )}
                     {busy || status === 'loading'
                       ? 'Working…'
@@ -423,7 +441,7 @@ export function LoginPage() {
                     disabled={busy || status === 'loading'}
                     onClick={() => void handleMicrosoft()}
                   >
-                    <LogIn className="h-4 w-4" />
+                    <MicrosoftIcon className="h-4 w-4" />
                     {busy || status === 'loading'
                       ? 'Working…'
                       : 'Sign in with Microsoft'}
