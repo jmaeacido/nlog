@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@theme {
+  --color-nlog-navy: #1e3a5f;
+  --color-nlog-navy-light: #2d5a8a;
+  --color-nlog-slate: #64748b;
+  --color-nlog-bg: #f8fafc;
+  --color-nlog-card: #ffffff;
+  --color-nlog-border: #e2e8f0;
+  --color-nlog-accent: #3b82f6;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    @apply border-nlog-border;
+  }
+
+  body {
+    @apply bg-nlog-bg text-slate-900 font-sans antialiased;
+    min-height: 100dvh;
+  }
+}
+
+@keyframes logger-dot-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  40% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+@keyframes logger-pulse-soft {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@utility animate-logger-dot {
+  animation: logger-dot-bounce 1.05s ease-in-out infinite;
+}
+
+@utility animate-logger-pulse {
+  animation: logger-pulse-soft 1.6s ease-in-out infinite;
+}

@@ -1,0 +1,28 @@
+# Dependencies
+node_modules
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Build
+dist
+dist-ssr
+*.local
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+data/
