@@ -1,9 +1,5 @@
 import { AuthError, requireAuthUser } from '../server/auth.js'
 
-export const config = {
-  runtime: 'edge',
-}
-
 export default async function handler(request: Request): Promise<Response> {
   try {
     await requireAuthUser(request, {

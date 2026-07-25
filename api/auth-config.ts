@@ -6,10 +6,6 @@ import {
   registrationAvailable,
 } from '../server/password-auth.js'
 
-export const config = {
-  runtime: 'edge',
-}
-
 export default async function handler(request: Request): Promise<Response> {
   if (request.method !== 'GET') {
     return jsonResponse({ error: 'Method not allowed' }, 405)

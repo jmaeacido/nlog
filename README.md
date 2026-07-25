@@ -59,7 +59,7 @@ See the reference draft: [`docs/invoice-worklog-draft-template/invoice-worklog-d
 - Tailwind CSS v4
 - Zustand, React Hook Form, Zod
 - ExcelJS (XLSX), React-PDF (PDF)
-- Groq (`llama-3.3-70b-versatile`) via `/api/*` (Vite plugin locally, Vercel Edge in production)
+- Groq (`llama-3.3-70b-versatile`) via `/api/*` (Vite plugin in local/dev)
 - vite-plugin-pwa
 
 ## Getting started
@@ -85,30 +85,21 @@ Output is written to `dist/`.
 
 ## Deploy
 
-### Vercel
-
-| Setting | Value |
-|---|---|
-| Build command | `npm run build` |
-| Output directory | `dist` |
-| Custom domain | `nlog.kaila-app.com` |
-| Env var | `GROQ_API_KEY` (server-only) |
-| Env var | `VITE_MSAL_CLIENT_ID` (Azure SPA app for Microsoft login / OneDrive) |
-| Env var | `NLOG_AUTH_SECRET` (email/password JWT signing) |
-| Env var | `NLOG_REGISTER_CODE` (optional invite code for registration) |
-| Env var | `NLOG_ALLOWED_EMAILS` (optional allowlist, comma-separated) |
-| Env var | `BREVO_API_KEY` / `NLOG_FROM_EMAIL` / `NLOG_APP_URL` (password reset email) |
-| Env var | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` (Vercel user store for register) |
-
-`vercel.json` is included for SPA routing (API routes under `/api` are excluded from the rewrite).
-
-### Laragon (local)
-
 ```bash
 npm run build
 ```
 
-Point a virtual host document root to `dist/` (e.g. `nlog.test`).
+Serve `dist/` behind your host (e.g. Apache/Laragon virtual host for `nlog.kaila-app.com` or `nlog.test`). Configure SPA fallback to `index.html` for non-file routes. API routes under `/api` are provided by the Vite plugin in development; production needs an equivalent reverse-proxy or process that serves those handlers.
+
+| Env var | Purpose |
+|---|---|
+| `GROQ_API_KEY` | Server-only Groq key |
+| `VITE_MSAL_CLIENT_ID` | Azure SPA app for Microsoft login / OneDrive |
+| `NLOG_AUTH_SECRET` | Email/password JWT signing |
+| `NLOG_REGISTER_CODE` | Optional invite code for registration |
+| `NLOG_ALLOWED_EMAILS` | Optional allowlist, comma-separated |
+| `BREVO_API_KEY` / `NLOG_FROM_EMAIL` / `NLOG_APP_URL` | Password reset email |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Production user store for register |
 
 ## Project structure
 
@@ -120,7 +111,7 @@ src/
 └── store/          # Zustand invoice state
 
 api/
-├── enhance-worklog.ts   # Groq worklog repair (Vercel Edge)
+├── enhance-worklog.ts   # Groq worklog repair
 └── invoice-report.ts    # Groq invoice quality report
 
 server/

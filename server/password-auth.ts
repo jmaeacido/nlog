@@ -217,7 +217,7 @@ export async function registerPasswordUser(
   }
   if (!canPersistUsers(env)) {
     throw new AuthError(
-      'Registration needs a user store. Locally this uses data/users.json; on Vercel set Upstash Redis env vars.',
+      'Registration needs a user store. Locally this uses data/users.json; in production set Upstash Redis env vars.',
       503,
     )
   }
@@ -422,7 +422,7 @@ export async function resetPasswordWithToken(
   }
   if (!canPersistUsers(env)) {
     throw new AuthError(
-      'Password reset needs a user store. Locally this uses data/users.json; on Vercel set Upstash Redis env vars.',
+      'Password reset needs a user store. Locally this uses data/users.json; in production set Upstash Redis env vars.',
       503,
     )
   }

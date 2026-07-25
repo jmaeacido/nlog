@@ -1,10 +1,6 @@
 import { AuthError, requireAuthUser } from '../server/auth.js'
 import { getUsdPhpRate } from '../server/exchange-rate.js'
 
-export const config = {
-  runtime: 'edge',
-}
-
 export default async function handler(request: Request): Promise<Response> {
   if (request.method !== 'GET') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {

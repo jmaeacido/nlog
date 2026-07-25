@@ -3,10 +3,6 @@ import { jsonResponse } from '../server/groq.js'
 import { processPasswordAuthEnv } from '../server/password-auth-env.js'
 import { requestPasswordReset } from '../server/password-auth.js'
 
-export const config = {
-  runtime: 'edge',
-}
-
 export default async function handler(request: Request): Promise<Response> {
   if (request.method !== 'POST') {
     return jsonResponse({ error: 'Method not allowed' }, 405)

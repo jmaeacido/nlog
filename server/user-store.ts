@@ -113,7 +113,7 @@ export async function saveUsers(
   }
 
   throw new Error(
-    'User registration is not configured. Set UPSTASH_REDIS_REST_URL/TOKEN (Vercel) or run locally with the Vite file store.',
+    'User registration is not configured. Set UPSTASH_REDIS_REST_URL/TOKEN or run locally with the Vite file store.',
   )
 }
 
