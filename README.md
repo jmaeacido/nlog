@@ -100,7 +100,7 @@ Serve `dist/` behind your host (e.g. Apache/Laragon virtual host for `nlog.kaila
 | `NLOG_REGISTER_CODE` | Optional invite code for registration |
 | `NLOG_ALLOWED_EMAILS` | Optional allowlist, comma-separated |
 | `BREVO_API_KEY` / `NLOG_FROM_EMAIL` / `NLOG_APP_URL` | Password reset email |
-| `SLACK_BOT_TOKEN` / `SLACK_CHECKIN_CHANNEL_ID` / `NLOG_SLACK_USER_ID` | Post check-ins to Output Reporting Channel; DM you a permalink after post |
+| `SLACK_BOT_TOKEN` / `SLACK_CHECKIN_CHANNEL_ID` / `NLOG_SLACK_USER_ID` | Post check-ins to Output Reporting Channel; DM you a permalink after post. Branding: see [`deploy/SLACK-APP.md`](deploy/SLACK-APP.md) |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Production user store for register |
 
 ## Project structure
