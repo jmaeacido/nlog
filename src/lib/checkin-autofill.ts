@@ -3,7 +3,7 @@ import {
   formatCheckInDateLabel,
   getCheckInReportScope,
   getEstWeekKey,
-  groupCompletedByClient,
+  normalizeCompletedDeliverables,
   type CheckInCoverageMode,
   type CheckInDraft,
 } from '@/lib/checkin-model'
@@ -23,14 +23,14 @@ function proposedToDraftPatch(
 ): Partial<CheckInDraft> {
   const completed =
     proposed.completed.length > 0
-      ? groupCompletedByClient(
+      ? normalizeCompletedDeliverables(
           proposed.completed.map((item) => ({
             id: crypto.randomUUID(),
             client: item.client,
             task: item.task,
           })),
         )
-      : groupCompletedByClient(
+      : normalizeCompletedDeliverables(
           base.completed.length > 0 ? base.completed : [emptyCompletedItem()],
         )
 

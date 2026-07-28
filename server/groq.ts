@@ -235,17 +235,22 @@ segment (since last check-in):
 - Wednesday → Tue–Wed
 - Friday → Thu–Fri
 
+Slack output shape (match this voice):
+- Date label like "Monday, July 27, 2026 (Monday Report)"
+- Completed lines like: "Client: Alchemydev — Obsidian Quant, Task: Blog CMS — initial build (...)"
+- Group by deliverable, not sub-steps. One completed object = one deliverable.
+
 Field rules:
 - Status report, NOT a timesheet. Specific names/deliverables — never vague "development work".
 - projects: comma-separated projects touched in the report window.
-- currentlyWorking: latest in-progress deliverable (client = project name).
-- completed: ONE object per client. task = newline-separated deliverables. Never one Client row per task.
-- Completed must match billable work evidenced in worklogs — do not invent.
-- pending: REQUIRED when unfinished/queued work exists.
-- blocker: fill only when evidenced; never invent Point Person names.
-- helpFrom: fill when non-blocking confirmation would help.
-- eta: REQUIRED when currentlyWorking is set (e.g. "Before Friday check-in").
-- Prefer existingDraft.completed; merge new deliverables into matching client rows.
+- currentlyWorking.client: prefer "Client — Project" when both are known (e.g. "Alchemydev — Obsidian Quant").
+- currentlyWorking.task: deliverable name + short status (what is done, what's next for this item).
+- completed: ONE object PER DELIVERABLE. Same client may appear on multiple rows. task = single deliverable summary (not newline-separated lists). Never invent work.
+- pending: REQUIRED when unfinished/queued work exists. Use newlines between items when listing several.
+- blocker: fill only when evidenced; never invent Point Person names. Include role/context in parentheses when helpful.
+- helpFrom: non-blocking asks; one person per line as "Name — what you need".
+- eta: REQUIRED when currentlyWorking is set. Prefer concrete dates / milestones on separate lines when there are multiple.
+- Prefer existingDraft.completed; append new deliverables as new objects (do not merge into one client row).
 Keep the JSON compact.`
 
 
@@ -392,35 +397,29 @@ function buildDeterministicCheckInDraft(
   ]
   const latest = entries[0]
 
-  const byClient = entries.reduce<Record<string, string[]>>((acc, entry) => {
-    const client = entry.project.trim() || 'General'
-    const task =
-      entry.description.split('.')[0]?.trim() || entry.description.trim()
-    acc[client] = acc[client] ?? []
-    if (task && !acc[client].some((t) => t.toLowerCase() === task.toLowerCase())) {
-      acc[client].push(task)
-    }
-    return acc
-  }, {})
-
-  // Merge existing completed clients first
+  const completedMap = new Map<string, { client: string; task: string }>()
   for (const item of existingDraft?.completed ?? []) {
     const client = item.client?.trim()
     if (!client) continue
-    byClient[client] = byClient[client] ?? []
     for (const line of coerceStringList(item.task)) {
-      if (!byClient[client].some((t) => t.toLowerCase() === line.toLowerCase())) {
-        byClient[client].push(line)
+      const key = `${client.toLowerCase()}::${line.toLowerCase()}`
+      if (!completedMap.has(key)) {
+        completedMap.set(key, { client, task: line })
       }
     }
   }
+  for (const entry of entries) {
+    const client = entry.project.trim() || 'General'
+    const task =
+      entry.description.split('.')[0]?.trim() || entry.description.trim()
+    if (!task) continue
+    const key = `${client.toLowerCase()}::${task.toLowerCase()}`
+    if (!completedMap.has(key)) {
+      completedMap.set(key, { client, task })
+    }
+  }
 
-  const completed = groupProposedCompleted(
-    Object.entries(byClient).map(([client, tasks]) => ({
-      client,
-      task: tasks.slice(0, 8).join('\n'),
-    })),
-  )
+  const completed = normalizeProposedCompleted([...completedMap.values()])
 
   const pendingFromExisting = existingDraft?.pending?.trim() || ''
   const pending =
@@ -555,7 +554,7 @@ export async function proposeCheckInDraftWithGroq(
     return {
       ...parsed.data,
       analysis,
-      completed: groupProposedCompleted(parsed.data.completed),
+      completed: normalizeProposedCompleted(parsed.data.completed),
       currentlyWorking: {
         client: parsed.data.currentlyWorking.client.trim(),
         task: parsed.data.currentlyWorking.task.trim(),
@@ -589,11 +588,12 @@ export async function proposeCheckInDraftWithGroq(
   }
 }
 
-function groupProposedCompleted(
+/** One object per deliverable; expands legacy multi-line task fields. */
+function normalizeProposedCompleted(
   items: Array<{ client: string; task: string }>,
 ): Array<{ client: string; task: string }> {
-  const order: string[] = []
-  const map = new Map<string, { client: string; tasks: string[] }>()
+  const seen = new Set<string>()
+  const result: Array<{ client: string; task: string }> = []
 
   for (const item of items) {
     const client = item.client.trim()
@@ -602,24 +602,24 @@ function groupProposedCompleted(
       .map((line) => line.replace(/^[-*•]\s*/, '').trim())
       .filter(Boolean)
     if (!client && taskLines.length === 0) continue
-    const key = client.toLowerCase() || `__anon_${order.length}`
-    const existing = map.get(key)
-    if (!existing) {
-      order.push(key)
-      map.set(key, { client: client || item.client, tasks: taskLines })
+
+    if (taskLines.length === 0) {
+      const key = `${client.toLowerCase()}::`
+      if (seen.has(key)) continue
+      seen.add(key)
+      result.push({ client, task: '' })
       continue
     }
-    for (const line of taskLines) {
-      if (!existing.tasks.some((t) => t.toLowerCase() === line.toLowerCase())) {
-        existing.tasks.push(line)
-      }
+
+    for (const task of taskLines) {
+      const key = `${client.toLowerCase()}::${task.toLowerCase()}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      result.push({ client, task })
     }
   }
 
-  return order.map((key) => {
-    const bucket = map.get(key)!
-    return { client: bucket.client, task: bucket.tasks.join('\n') }
-  })
+  return result
 }
 
 export interface LoggerChatMessage {
@@ -722,7 +722,7 @@ You help with:
 - Automatic USD → PHP conversion using the live mid-market reference rate in context
 - Invoice History: exported invoices are saved on-device; context.historyCount / recentHistory summarize them
 - Time adjustments: users can increase/decrease entry hours, nudge by 0.25h, reset to original, bulk-adjust billable rows, or add a manual adjustment entry on the Details step
-- Contractor check-ins (Alchemy Dev Section 7): Mon/Wed/Fri before 9am EST status reports. Coverage mode is either week_to_date (Mon Sat–Mon, Wed Sat–Wed, Fri Sat–Fri) or segment (Mon Sat–Mon, Wed Tue–Wed, Fri Thu–Fri). context.checkIn holds the current draft; context.checkInWorklogPreview may summarize recent worklog rows. Completed must match billing invoices. When drafting a check-in, always analyze worklogs for the report window first, then fill pending, blockers, help/confirmation, and ETA when applicable. Point users to **Draft with Logger** / **Prefill from worklogs** on the Check-in page (or the Apply card) — you cannot silently overwrite their form from chat text alone.
+- Contractor check-ins (Alchemy Dev Section 7): Mon/Wed/Fri before 9am EST status reports. Coverage mode is either week_to_date (Mon Sat–Mon, Wed Sat–Wed, Fri Sat–Fri) or segment (Mon Sat–Mon, Wed Tue–Wed, Fri Thu–Fri). Slack copy looks like a Monday/Wednesday/Friday Report: Date "Monday, July 27, 2026 (Monday Report)"; Completed as one line per deliverable ("Client: …, Task: …"); group by deliverable not sub-steps. context.checkIn holds the current draft; context.checkInWorklogPreview may summarize recent worklog rows. Completed must match billing invoices. When drafting a check-in, always analyze worklogs for the report window first, then fill pending, blockers, help/confirmation, and ETA when applicable. Point users to **Draft with Logger** / **Prefill from worklogs** on the Check-in page (or the Apply card) — you cannot silently overwrite their form from chat text alone.
 
 Billable totals (CRITICAL):
 - context.totalDue, context.totalHours, context.subtotalUsd, and context.totalDuePhp are the AUTHORITATIVE Billable Amount figures shown in the NLog UI.

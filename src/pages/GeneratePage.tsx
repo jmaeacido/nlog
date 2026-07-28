@@ -171,20 +171,11 @@ export function GeneratePage({
                 Per Alchemy Dev standards, this list must match what you bill.
                 Confirm invoice line items cover these deliverables.
               </p>
-              <ul className="mt-2 space-y-3 text-sm text-nlog-navy">
-                {weekCompleted.map((item, index) => (
+              <ul className="mt-2 space-y-2 text-sm text-nlog-navy">
+                {weekCompleted.map((item) => (
                   <li key={item.id}>
-                    <p className="font-medium">
-                      Client {index + 1} - {item.client}
-                    </p>
-                    <p className="mt-0.5 text-xs font-medium text-nlog-slate">
-                      Task:
-                    </p>
-                    <ul className="mt-0.5 space-y-0.5 text-nlog-navy">
-                      {splitCompletedTasks(item.task).map((task) => (
-                        <li key={task}>{task}</li>
-                      ))}
-                    </ul>
+                    Client: {item.client}, Task:{' '}
+                    {splitCompletedTasks(item.task).join('; ') || item.task}
                   </li>
                 ))}
               </ul>

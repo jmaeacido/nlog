@@ -8,6 +8,7 @@ import {
   Save,
   Sparkles,
   Trash2,
+  Send,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/auth/auth-provider'
@@ -29,6 +30,11 @@ import {
 } from '@/lib/checkin-model'
 import { checkInDraftSchema } from '@/lib/checkin-schema'
 import { cn } from '@/lib/utils'
+import {
+  fetchSlackCheckInConfigured,
+  requestPostCheckInSlack,
+} from '@/lib/checkin-client'
+import { ApiAuthError } from '@/lib/api-client'
 import { useCheckInStore } from '@/store/checkin-store'
 import { useInvoiceHistoryStore } from '@/store/invoice-history-store'
 
@@ -68,6 +74,14 @@ export function CheckInPage({
   const [autofilling, setAutofilling] = useState<'worklogs' | 'logger' | null>(
     null,
   )
+  const [slackPosting, setSlackPosting] = useState(false)
+  const [slackEnabled, setSlackEnabled] = useState(false)
+
+  useEffect(() => {
+    void fetchSlackCheckInConfigured().then(setSlackEnabled).catch(() => {
+      setSlackEnabled(false)
+    })
+  }, [])
 
   useEffect(() => {
     ensureDraftForSession(displayName || '')
@@ -207,6 +221,52 @@ export function CheckInPage({
     }
   }
 
+  const postToSlack = async (text: string) => {
+    setSlackPosting(true)
+    try {
+      const result = await requestPostCheckInSlack(text)
+      if (result.permalink) {
+        toast.success('Posted to Output Reporting Channel.', {
+          action: {
+            label: 'Open in Slack',
+            onClick: () => window.open(result.permalink!, '_blank', 'noopener'),
+          },
+        })
+      } else {
+        toast.success('Posted to Output Reporting Channel.')
+      }
+      return true
+    } catch (error) {
+      const message =
+        error instanceof ApiAuthError || error instanceof Error
+          ? error.message
+          : 'Slack post failed.'
+      toast.error(message)
+      return false
+    } finally {
+      setSlackPosting(false)
+    }
+  }
+
+  const handleSaveAndPost = async () => {
+    if (!validate()) {
+      toast.error('Fix the highlighted fields first.')
+      return
+    }
+    saveReport()
+    const text = formatCheckInForSlack(useCheckInStore.getState().draft)
+    await postToSlack(text)
+  }
+
+  const handlePostOnly = async () => {
+    if (!validate()) {
+      toast.error('Fix the highlighted fields before posting.')
+      return
+    }
+    const text = formatCheckInForSlack(draft)
+    await postToSlack(text)
+  }
+
   const err = (path: string) => fieldErrors[path]
 
   return (
@@ -326,11 +386,12 @@ export function CheckInPage({
             )}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="checkin-date">Date / report #</Label>
+            <Label htmlFor="checkin-date">Date / report</Label>
             <Input
               id="checkin-date"
               value={draft.dateLabel}
               onChange={(e) => setDraft({ dateLabel: e.target.value })}
+              placeholder="Monday, July 27, 2026 (Monday Report)"
             />
             {err('dateLabel') && (
               <p className="text-xs text-rose-700">{err('dateLabel')}</p>
@@ -369,7 +430,7 @@ export function CheckInPage({
                     },
                   })
                 }
-                placeholder="Client name"
+                placeholder="Alchemydev — Obsidian Quant"
               />
               {err('currentlyWorking.client') && (
                 <p className="text-xs text-rose-700">
@@ -391,7 +452,7 @@ export function CheckInPage({
                     },
                   })
                 }
-                placeholder="Specific deliverable — not “development work”"
+                placeholder="Blog CMS — running through local testing and getting it ready for production…"
               />
               {err('currentlyWorking.task') && (
                 <p className="text-xs text-rose-700">
@@ -407,8 +468,9 @@ export function CheckInPage({
             Completed this week so far
           </legend>
           <p className="text-xs text-nlog-slate">
-            One block per client. Put each deliverable on its own line under
-            Task — do not invent a new Client for every task.
+            One row per deliverable (not sub-steps). Same client can appear on
+            multiple rows — Slack copies as{' '}
+            <span className="font-medium">Client: …, Task: …</span>
           </p>
           <div className="space-y-3">
             {draft.completed.map((item, index) => (
@@ -427,7 +489,7 @@ export function CheckInPage({
                       onChange={(e) =>
                         updateCompleted(item.id, { client: e.target.value })
                       }
-                      placeholder="Hydro Boost"
+                      placeholder="Alchemydev — Obsidian Quant"
                     />
                     {err(`completed.${index}.client`) && (
                       <p className="text-xs text-rose-700">
@@ -440,7 +502,7 @@ export function CheckInPage({
                     size="icon"
                     variant="ghost"
                     className="mt-6"
-                    aria-label="Remove client block"
+                    aria-label="Remove deliverable"
                     onClick={() => removeCompleted(item.id)}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -450,14 +512,12 @@ export function CheckInPage({
                   <Label htmlFor={`completed-task-${item.id}`}>Task</Label>
                   <Textarea
                     id={`completed-task-${item.id}`}
-                    className="min-h-24"
+                    className="min-h-20"
                     value={item.task}
                     onChange={(e) =>
                       updateCompleted(item.id, { task: e.target.value })
                     }
-                    placeholder={
-                      'Cap and label color correction against product photos\nBottle label wrap sizing and seam in Blender (afternoon)'
-                    }
+                    placeholder="Blog CMS — initial build (database, login, admin dashboard, …)"
                   />
                   {err(`completed.${index}.task`) && (
                     <p className="text-xs text-rose-700">
@@ -475,7 +535,7 @@ export function CheckInPage({
             onClick={() => appendCompleted()}
           >
             <Plus className="h-4 w-4" />
-            Add client
+            Add deliverable
           </Button>
         </fieldset>
 
@@ -486,7 +546,9 @@ export function CheckInPage({
             className="min-h-20"
             value={draft.pending}
             onChange={(e) => setDraft({ pending: e.target.value })}
-            placeholder="What’s queued once current work is done"
+            placeholder={
+              'Run through the full acceptance checklist locally\nPackage for review (branch/PR) and prepare production deploy'
+            }
           />
         </div>
 
@@ -537,21 +599,27 @@ export function CheckInPage({
           <Label htmlFor="checkin-help">
             Who I need help / confirmation from (non-blocking)
           </Label>
-          <Input
+          <Textarea
             id="checkin-help"
+            className="min-h-20"
             value={draft.helpFrom}
             onChange={(e) => setDraft({ helpFrom: e.target.value })}
-            placeholder="Name — lower urgency"
+            placeholder={
+              'Arvin — review the deliverable before merge and production deploy\nKev — SEO or content expectations for first posts'
+            }
           />
         </div>
 
         <div className="space-y-1.5">
           <Label htmlFor="checkin-eta">ETA on current item</Label>
-          <Input
+          <Textarea
             id="checkin-eta"
+            className="min-h-20"
             value={draft.eta}
             onChange={(e) => setDraft({ eta: e.target.value })}
-            placeholder="Realistic completion estimate"
+            placeholder={
+              'Local acceptance + PR packaging: Wednesday, July 29, 2026\nProduction go-live (pending approval): Friday, July 31, 2026'
+            }
           />
           {err('eta') && (
             <p className="text-xs text-rose-700">{err('eta')}</p>
@@ -560,10 +628,32 @@ export function CheckInPage({
 
         <div className="sticky bottom-0 -mx-4 space-y-2 border-t border-nlog-border bg-nlog-bg/95 px-4 py-4 backdrop-blur">
           <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={() => void handleSaveAndCopy()}>
-              <ClipboardCopy className="h-4 w-4" />
-              Save &amp; copy for Slack
-            </Button>
+            {slackEnabled ? (
+              <>
+                <Button
+                  type="button"
+                  disabled={slackPosting}
+                  onClick={() => void handleSaveAndPost()}
+                >
+                  <Send className="h-4 w-4" />
+                  {slackPosting ? 'Posting…' : 'Save & post to Slack'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={slackPosting}
+                  onClick={() => void handlePostOnly()}
+                >
+                  <Send className="h-4 w-4" />
+                  Post to Slack
+                </Button>
+              </>
+            ) : (
+              <Button type="button" onClick={() => void handleSaveAndCopy()}>
+                <ClipboardCopy className="h-4 w-4" />
+                Save &amp; copy for Slack
+              </Button>
+            )}
             <Button type="button" variant="outline" onClick={handleSave}>
               <Save className="h-4 w-4" />
               Save
@@ -640,6 +730,19 @@ export function CheckInPage({
                   >
                     Reopen
                   </Button>
+                  {slackEnabled && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={slackPosting}
+                      onClick={() => {
+                        void postToSlack(formatCheckInForSlack(entry))
+                      }}
+                    >
+                      Post
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     size="sm"

@@ -30,6 +30,13 @@ import {
 } from './server/password-auth.js'
 import { registerFileUserStoreAdapter } from './server/user-store.js'
 import { readUsersFile, writeUsersFile } from './server/user-store-fs.js'
+import {
+  dmSlackUser,
+  nlogSlackUserId,
+  postCheckInToSlack,
+  requireSlackCheckInConfig,
+  slackCheckInConfigured,
+} from './server/slack-checkin.js'
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = []
@@ -267,6 +274,64 @@ export function groqApiPlugin(): Plugin {
               graphToken,
             )
             sendJson(res, 200, { results })
+            return
+          }
+
+          if (url === '/api/slack-config') {
+            if (req.method !== 'GET') {
+              sendJson(res, 405, { error: 'Method not allowed' })
+              return
+            }
+            sendJson(res, 200, {
+              slackCheckIn: slackCheckInConfigured(env),
+              slackUserId: nlogSlackUserId(env),
+            })
+            return
+          }
+
+          if (url === '/api/post-checkin-slack') {
+            if (req.method !== 'POST') {
+              sendJson(res, 405, { error: 'Method not allowed' })
+              return
+            }
+            if (!slackCheckInConfigured(env)) {
+              sendJson(
+                res,
+                503,
+                {
+                  error:
+                    'Slack posting is not configured. Set SLACK_BOT_TOKEN and SLACK_CHECKIN_CHANNEL_ID on the server.',
+                },
+              )
+              return
+            }
+            const slackBody = (await readJsonBody(req)) as { text?: string }
+            const slackText =
+              typeof slackBody?.text === 'string' ? slackBody.text : ''
+            if (!slackText.trim()) {
+              sendJson(res, 400, { error: 'text is required' })
+              return
+            }
+            try {
+              const config = requireSlackCheckInConfig(env)
+              const result = await postCheckInToSlack(config, slackText)
+              const ownerSlackId = nlogSlackUserId(env)
+              if (ownerSlackId) {
+                const confirm = result.permalink
+                  ? `Your check-in was posted to the Output Reporting Channel.\n${result.permalink}`
+                  : 'Your check-in was posted to the Output Reporting Channel.'
+                await dmSlackUser(config.botToken, ownerSlackId, confirm)
+              }
+              sendJson(res, 200, {
+                ok: true,
+                ts: result.ts,
+                permalink: result.permalink,
+              })
+            } catch (error) {
+              const message =
+                error instanceof Error ? error.message : 'Slack post failed'
+              sendJson(res, 502, { error: message })
+            }
             return
           }
 

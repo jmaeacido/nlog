@@ -27,7 +27,7 @@ Typical flow:
 - **AI invoice report** — Review step summarizes scope, project mix, and data-quality risks
 - **USD → PHP conversion** — live mid-market rate shown on billable totals; Logger uses the same rate
 - **Invoice history** — exported invoices are saved on-device for later review and re-download
-- **Contractor check-ins** — Mon/Wed/Fri productivity reports (Alchemy Dev Section 7) with Slack-ready copy; choose week-to-date (Sat→report day) or since-last-check-in (Mon Sat–Mon / Wed Tue–Wed / Fri Thu–Fri); prefill from worklogs or Draft with Logger; Completed must match billing
+- **Contractor check-ins** — Mon/Wed/Fri productivity reports (Alchemy Dev Section 7) with Slack-ready copy in Monday/Wednesday/Friday Report form; **Post to Slack** when `SLACK_BOT_TOKEN` + `SLACK_CHECKIN_CHANNEL_ID` are set; choose week-to-date (Sat→report day) or since-last-check-in (Mon Sat–Mon / Wed Tue–Wed / Fri Thu–Fri); prefill from worklogs or Draft with Logger; Completed is one line per deliverable and must match billing
 - **Time adjustments** — increase/decrease entry hours, bulk adjust billable rows, or add manual adjustment entries
 - **Project paths / OneDrive** — save local folders or OneDrive share links and fetch `.md` worklogs
 - **Private Microsoft login** — app and APIs require sign-in; optional email allowlist
@@ -100,6 +100,7 @@ Serve `dist/` behind your host (e.g. Apache/Laragon virtual host for `nlog.kaila
 | `NLOG_REGISTER_CODE` | Optional invite code for registration |
 | `NLOG_ALLOWED_EMAILS` | Optional allowlist, comma-separated |
 | `BREVO_API_KEY` / `NLOG_FROM_EMAIL` / `NLOG_APP_URL` | Password reset email |
+| `SLACK_BOT_TOKEN` / `SLACK_CHECKIN_CHANNEL_ID` / `NLOG_SLACK_USER_ID` | Post check-ins to Output Reporting Channel; DM you a permalink after post |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Production user store for register |
 
 ## Project structure

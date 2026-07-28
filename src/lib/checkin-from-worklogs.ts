@@ -4,7 +4,7 @@ import {
   getCheckInReportScope,
   getEstDateKey,
   getEstWeekKey,
-  groupCompletedByClient,
+  normalizeCompletedDeliverables,
   isDateKeyInReportScope,
   type CheckInCompletedItem,
   type CheckInDraft,
@@ -113,31 +113,21 @@ export function buildCheckInPrefillFromEntries(
     ...new Set(pool.map(({ entry }) => entry.project.trim()).filter(Boolean)),
   ]
 
-  const byClient = new Map<string, { client: string; tasks: string[] }>()
+  const fromWorklogs: CheckInCompletedItem[] = []
+  const seenTasks = new Set<string>()
   for (const { entry } of pool) {
     const client = entry.project.trim() || 'General'
     const task = extractTaskTitle(entry.description, client)
-    const key = client.toLowerCase()
-    const bucket = byClient.get(key)
-    if (!bucket) {
-      byClient.set(key, { client, tasks: task ? [task] : [] })
-      continue
-    }
-    if (
-      task &&
-      !bucket.tasks.some((t) => t.toLowerCase() === task.toLowerCase())
-    ) {
-      bucket.tasks.push(task)
-    }
-  }
-
-  const fromWorklogs: CheckInCompletedItem[] = [...byClient.values()].map(
-    (bucket) => ({
+    if (!task) continue
+    const key = `${client.toLowerCase()}::${task.toLowerCase()}`
+    if (seenTasks.has(key)) continue
+    seenTasks.add(key)
+    fromWorklogs.push({
       id: crypto.randomUUID(),
-      client: bucket.client,
-      task: bucket.tasks.join('\n'),
-    }),
-  )
+      client,
+      task,
+    })
+  }
 
   // Prefill is coverage-scoped: default replace. Optional merge only keeps
   // prior completed rows whose client still appears in this window.
@@ -149,9 +139,12 @@ export function buildCheckInPrefillFromEntries(
     const priorInScope = options.existingCompleted.filter((item) =>
       inScopeClients.has(item.client.trim().toLowerCase()),
     )
-    completed = groupCompletedByClient([...priorInScope, ...fromWorklogs])
+    completed = normalizeCompletedDeliverables([
+      ...priorInScope,
+      ...fromWorklogs,
+    ])
   } else {
-    completed = groupCompletedByClient(fromWorklogs)
+    completed = normalizeCompletedDeliverables(fromWorklogs)
   }
 
   const latest = [...pool].sort((a, b) => {

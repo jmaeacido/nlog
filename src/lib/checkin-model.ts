@@ -235,23 +235,27 @@ export function isDateKeyInReportScope(
 
 export function formatCheckInDateLabel(
   date: Date = new Date(),
-  mode: CheckInCoverageMode = 'week_to_date',
+  _mode: CheckInCoverageMode = 'week_to_date',
 ): string {
   const { weekday } = estParts(date)
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-  const dayName = dayNames[weekday]
-  const checkInDay =
-    weekday === 1 ? 'Mon' : weekday === 3 ? 'Wed' : weekday === 5 ? 'Fri' : dayName
+  const reportSuffix =
+    weekday === 1
+      ? 'Monday Report'
+      : weekday === 3
+        ? 'Wednesday Report'
+        : weekday === 5
+          ? 'Friday Report'
+          : 'Check-in'
 
   const formatted = new Intl.DateTimeFormat('en-US', {
     timeZone: EST,
-    month: 'short',
+    weekday: 'long',
+    month: 'long',
     day: 'numeric',
     year: 'numeric',
   }).format(date)
 
-  const scope = getCheckInReportScope(date, mode)
-  return `${checkInDay} check-in · ${formatted} · ${scope.coverage}`
+  return `${formatted} (${reportSuffix})`
 }
 
 export function emptyCompletedItem(): CheckInCompletedItem {
@@ -271,71 +275,76 @@ export function splitCompletedTasks(task: string): string[] {
 }
 
 /**
- * One row per client; tasks stacked as newline-separated deliverables.
- * Merges duplicate clients (case-insensitive).
+ * One row per deliverable (not per client).
+ * Expands legacy multi-line Task fields and dedupes identical client+task pairs.
  */
-export function groupCompletedByClient(
+export function normalizeCompletedDeliverables(
   items: CheckInCompletedItem[],
 ): CheckInCompletedItem[] {
-  const order: string[] = []
-  const map = new Map<string, CheckInCompletedItem>()
+  const seen = new Set<string>()
+  const result: CheckInCompletedItem[] = []
 
   for (const item of items) {
     const client = item.client.trim()
     const tasks = splitCompletedTasks(item.task)
     if (!client && tasks.length === 0) continue
 
-    const key = client.toLowerCase() || `__anon_${item.id}`
-    const existing = map.get(key)
-    if (!existing) {
-      order.push(key)
-      map.set(key, {
-        id: item.id,
-        client: client || item.client,
-        task: tasks.join('\n'),
-      })
+    if (tasks.length === 0) {
+      const key = `${client.toLowerCase()}::`
+      if (seen.has(key)) continue
+      seen.add(key)
+      result.push({ id: item.id, client, task: '' })
       continue
     }
 
-    const merged = new Set([
-      ...splitCompletedTasks(existing.task),
-      ...tasks,
-    ])
-    existing.task = [...merged].join('\n')
-    if (!existing.client.trim() && client) existing.client = client
+    tasks.forEach((task, index) => {
+      const key = `${client.toLowerCase()}::${task.toLowerCase()}`
+      if (seen.has(key)) return
+      seen.add(key)
+      result.push({
+        id: index === 0 ? item.id : crypto.randomUUID(),
+        client,
+        task,
+      })
+    })
   }
 
-  const grouped = order.map((key) => map.get(key)!)
-  return grouped.length > 0 ? grouped : [emptyCompletedItem()]
+  return result.length > 0 ? result : [emptyCompletedItem()]
+}
+
+/**
+ * @deprecated Use normalizeCompletedDeliverables — Completed is one row per deliverable.
+ * Kept as an alias so older call sites keep working during the format switch.
+ */
+export function groupCompletedByClient(
+  items: CheckInCompletedItem[],
+): CheckInCompletedItem[] {
+  return normalizeCompletedDeliverables(items)
 }
 
 export function formatCompletedBlockForSlack(
   items: CheckInCompletedItem[],
 ): string[] {
-  const grouped = groupCompletedByClient(items).filter(
+  const deliverables = normalizeCompletedDeliverables(items).filter(
     (item) => item.client.trim() || item.task.trim(),
   )
 
-  if (grouped.length === 0) {
+  if (deliverables.length === 0) {
     return [
-      'Client 1 - [name]',
-      'Task:',
-      '[deliverable as a whole]',
+      '',
+      'Client: [name], Task: [deliverable as a whole]',
     ]
   }
 
-  const lines: string[] = []
-  grouped.forEach((item, index) => {
-    if (index > 0) lines.push('')
-    lines.push(`Client ${index + 1} - ${item.client.trim() || '[name]'}`)
-    lines.push('Task:')
-    const tasks = splitCompletedTasks(item.task)
-    if (tasks.length === 0) {
-      lines.push('[deliverable as a whole]')
-    } else {
-      lines.push(...tasks)
-    }
-  })
+  const lines: string[] = ['']
+  for (const item of deliverables) {
+    const client = item.client.trim() || '[name]'
+    const task = item.task.trim() || '[deliverable as a whole]'
+    lines.push(`Client: ${client}, Task: ${task}`)
+    lines.push('')
+  }
+  // Trailing blank is handled by the parent join; drop the last empty line
+  if (lines[lines.length - 1] === '') lines.pop()
   return lines
 }
 
@@ -356,7 +365,7 @@ export function createEmptyDraft(name = ''): CheckInDraft {
 
 export function createReportFromDraft(draft: CheckInDraft): CheckInReport {
   const now = new Date().toISOString()
-  const completed = groupCompletedByClient(draft.completed).filter(
+  const completed = normalizeCompletedDeliverables(draft.completed).filter(
     (item) => item.client.trim() || item.task.trim(),
   )
   return {
@@ -426,10 +435,16 @@ export function formatCheckInForSlack(draft: CheckInDraft | CheckInReport): stri
     blockerIssue || blockerPerson
       ? [
           'Blocker (if any):',
-          `- What's blocking: ${blockerIssue || '[specific issue, not "waiting on approval"]'}`,
-          `- Point Person to answer this: ${blockerPerson || '[name]'}`,
+          '',
+          `What's blocking: ${blockerIssue || '[specific issue, not "waiting on approval"]'}`,
+          '',
+          `Point Person to answer this: ${blockerPerson || '[name]'}`,
         ].join('\n')
-      : ['Blocker (if any):', '- None'].join('\n')
+      : ['Blocker (if any):', '', 'None'].join('\n')
+
+  const pending = draft.pending.trim()
+  const helpFrom = draft.helpFrom.trim()
+  const eta = draft.eta.trim()
 
   return [
     `Name: ${draft.name.trim()}`,
@@ -438,22 +453,24 @@ export function formatCheckInForSlack(draft: CheckInDraft | CheckInReport): stri
     '',
     'Currently working on:',
     `Client: ${draft.currentlyWorking.client.trim()}`,
-    'Task:',
-    draft.currentlyWorking.task.trim() || '',
+    `Task: ${draft.currentlyWorking.task.trim()}`,
     '',
-    'Completed this week so far (group by client; list deliverables under Task):',
+    'Completed this week so far (group by deliverable, not sub-steps):',
     ...completedLines,
     '',
-    `Pending / up next:`,
-    draft.pending.trim() || '',
+    'Pending / up next:',
+    '',
+    pending || '',
     '',
     blockerBlock,
     '',
     'Who I need help or confirmation from (non-blocking, general):',
-    draft.helpFrom.trim() || '',
+    '',
+    helpFrom || '',
     '',
     'ETA on current item:',
-    draft.eta.trim() || '',
+    '',
+    eta || '',
   ].join('\n')
 }
 
@@ -507,7 +524,7 @@ export function completedLinesForWeek(
     b.updatedAt.localeCompare(a.updatedAt),
   )[0]
 
-  return groupCompletedByClient(newest.completed).filter(
+  return normalizeCompletedDeliverables(newest.completed).filter(
     (item) => item.client.trim() || item.task.trim(),
   )
 }

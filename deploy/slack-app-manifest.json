@@ -1,0 +1,29 @@
+{
+  "display_information": {
+    "name": "NLog Check-In",
+    "description": "Posts Mon/Wed/Fri contractor check-ins from NLog to the Output Reporting Channel.",
+    "background_color": "#1e3a5f"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "NLog Check-In",
+      "always_online": false
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "chat:write",
+        "chat:write.public",
+        "channels:join",
+        "channels:read",
+        "im:write"
+      ]
+    }
+  },
+  "settings": {
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}
