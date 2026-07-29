@@ -27,6 +27,8 @@ export interface CheckInDraft {
   weekKey: string
 }
 
+export const CHECK_IN_CONTRACTOR_NAME = 'John Mark Agustin E. Acido'
+
 export interface CheckInReport extends CheckInDraft {
   id: string
   savedAt: string
@@ -348,7 +350,7 @@ export function formatCompletedBlockForSlack(
   return lines
 }
 
-export function createEmptyDraft(name = ''): CheckInDraft {
+export function createEmptyDraft(name = CHECK_IN_CONTRACTOR_NAME): CheckInDraft {
   return {
     name,
     dateLabel: formatCheckInDateLabel(),

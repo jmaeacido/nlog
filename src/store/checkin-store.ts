@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import {
   completedLinesForWeek,
+  CHECK_IN_CONTRACTOR_NAME,
   createEmptyDraft,
   createReportFromDraft,
   draftFromReport,
@@ -35,6 +36,7 @@ interface CheckInState {
   ensureDraftForSession: (displayName: string) => void
   saveReport: () => CheckInReport
   loadReportIntoDraft: (id: string) => boolean
+  clearDraft: (displayName?: string) => void
   startNextCheckIn: (displayName?: string) => void
   removeEntry: (id: string) => void
   importReport: (report: CheckInReport) => boolean
@@ -107,10 +109,10 @@ export const useCheckInStore = create<CheckInState>()(
           }
         }),
 
-      ensureDraftForSession: (displayName) => {
+      ensureDraftForSession: (_displayName) => {
         const state = get()
         const weekKey = getEstWeekKey()
-        const name = displayName.trim() || state.draft.name
+        const name = CHECK_IN_CONTRACTOR_NAME
         const sameWeekNewest = newestSameWeekEntry(state.entries, weekKey)
 
         // Empty / stale draft: seed from same-week report or fresh empty
@@ -191,21 +193,22 @@ export const useCheckInStore = create<CheckInState>()(
       loadReportIntoDraft: (id) => {
         const entry = get().entries.find((item) => item.id === id)
         if (!entry) return false
-        set({ draft: draftFromReport(entry) })
+        set({
+          draft: draftFromReport(entry, { name: CHECK_IN_CONTRACTOR_NAME }),
+        })
         return true
       },
 
-      startNextCheckIn: (displayName) => {
+      clearDraft: () => {
+        set({ draft: createEmptyDraft() })
+      },
+
+      startNextCheckIn: () => {
         const { draft, entries } = get()
         const weekKey = getEstWeekKey()
         const sameWeek = newestSameWeekEntry(entries, weekKey)
         const source = sameWeek ?? draft
-        set({
-          draft: startNextDraftFrom(
-            source,
-            displayName?.trim() || source.name,
-          ),
-        })
+        set({ draft: startNextDraftFrom(source, CHECK_IN_CONTRACTOR_NAME) })
       },
 
       removeEntry: (id) =>

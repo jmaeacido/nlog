@@ -22,6 +22,7 @@ import {
   prefillCheckInFromWorklogs,
 } from '@/lib/checkin-autofill'
 import {
+  CHECK_IN_CONTRACTOR_NAME,
   formatCheckInDateLabel,
   formatCheckInForSlack,
   getCheckInCadenceStatus,
@@ -65,6 +66,7 @@ export function CheckInPage({
   const loadReportIntoDraft = useCheckInStore(
     (state) => state.loadReportIntoDraft,
   )
+  const clearDraft = useCheckInStore((state) => state.clearDraft)
   const startNextCheckIn = useCheckInStore((state) => state.startNextCheckIn)
   const removeEntry = useCheckInStore((state) => state.removeEntry)
   const coverageMode = useCheckInStore((state) => state.coverageMode)
@@ -385,9 +387,9 @@ export function CheckInPage({
             <Label htmlFor="checkin-name">Contractor name</Label>
             <Input
               id="checkin-name"
-              value={draft.name}
-              onChange={(e) => setDraft({ name: e.target.value })}
-              placeholder="Your name"
+              value={CHECK_IN_CONTRACTOR_NAME}
+              readOnly
+              aria-readonly="true"
             />
             {err('name') && (
               <p className="text-xs text-rose-700">{err('name')}</p>
@@ -685,6 +687,25 @@ export function CheckInPage({
             >
               <RotateCcw className="h-4 w-4" />
               Start next check-in
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-red-700 hover:bg-red-50 hover:text-red-800"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    'Clear all check-in details? Your contractor name and current report date will be kept.',
+                  )
+                ) {
+                  clearDraft(displayName || undefined)
+                  setFieldErrors({})
+                  toast.success('Check-in form cleared.')
+                }
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+              Clear form
             </Button>
           </div>
         </div>
