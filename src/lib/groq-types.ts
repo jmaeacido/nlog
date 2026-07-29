@@ -78,12 +78,12 @@ export interface LoggerChatContext {
     dateLabel?: string
     weekKey?: string
     projects?: string
-    currentlyWorking?: { client?: string; task?: string }
+    currentlyWorking?: Array<{ client: string; task: string }>
     completedCount?: number
     completedPreview?: Array<{ client: string; task: string }>
-    pending?: string
+    pending?: Array<{ client: string; task: string }>
     hasBlocker?: boolean
-    eta?: string
+    eta?: Array<{ client: string; task: string }>
   }
   checkInWorklogPreview?: Array<{
     time: string
@@ -100,11 +100,11 @@ export interface LoggerChatResult {
 export interface ProposedCheckInResult {
   analysis?: string
   projects: string
-  currentlyWorking: { client: string; task: string }
+  currentlyWorking: Array<{ client: string; task: string }>
   completed: Array<{ client: string; task: string }>
-  pending: string
-  blocker: { issue: string; pointPerson: string }
-  helpFrom: string
-  eta: string
+  pending: Array<{ client: string; task: string }>
+  blocker: Array<{ client: string; issue: string; pointPerson: string }>
+  helpFrom: Array<{ client: string; task: string }>
+  eta: Array<{ client: string; task: string }>
   notes: string[]
 }

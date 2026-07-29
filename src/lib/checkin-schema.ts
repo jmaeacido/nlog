@@ -1,101 +1,92 @@
 import { z } from 'zod'
 
-const completedItemSchema = z.object({
+const clientItemSchema = z.object({
   id: z.string(),
   client: z.string(),
   task: z.string(),
+})
+
+const blockerItemSchema = clientItemSchema.extend({
+  issue: z.string(),
+  pointPerson: z.string(),
 })
 
 export const checkInDraftSchema = z
   .object({
     name: z.string().trim().min(1, 'Name is required'),
     dateLabel: z.string().trim().min(1, 'Date / report label is required'),
-    projects: z.string().trim().min(1, 'List every project touched since the last report'),
-    currentlyWorking: z.object({
-      client: z.string(),
-      task: z.string(),
-    }),
-    completed: z.array(completedItemSchema),
-    pending: z.string(),
-    blocker: z.object({
-      issue: z.string(),
-      pointPerson: z.string(),
-    }),
-    helpFrom: z.string(),
-    eta: z.string(),
+    projects: z.string().trim().min(1, 'List every project in this report'),
+    currentlyWorking: z.array(clientItemSchema),
+    completed: z.array(clientItemSchema),
+    pending: z.array(clientItemSchema),
+    blocker: z.array(blockerItemSchema),
+    helpFrom: z.array(clientItemSchema),
+    eta: z.array(clientItemSchema),
     weekKey: z.string(),
   })
   .superRefine((values, context) => {
-    const currentClient = values.currentlyWorking.client.trim()
-    const currentTask = values.currentlyWorking.task.trim()
+    const sections = [
+      ['currentlyWorking', values.currentlyWorking],
+      ['completed', values.completed],
+      ['pending', values.pending],
+      ['helpFrom', values.helpFrom],
+      ['eta', values.eta],
+    ] as const
 
-    if (currentClient && !currentTask) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Describe the active task, or clear the client for None',
-        path: ['currentlyWorking', 'task'],
+    for (const [section, items] of sections) {
+      const seen = new Set<string>()
+      items.forEach((item, index) => {
+        if (!item.client.trim() && !item.task.trim()) return
+        if (!item.client.trim()) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Client / project is required',
+            path: [section, index, 'client'],
+          })
+        }
+        if (!item.task.trim()) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Details are required',
+            path: [section, index, 'task'],
+          })
+        }
+        const key = item.client.trim().toLowerCase()
+        if (key && seen.has(key)) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Consolidate this project into its existing field',
+            path: [section, index, 'client'],
+          })
+        }
+        seen.add(key)
       })
     }
 
-    if (currentTask && !currentClient) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Name the client, or clear the task for None',
-        path: ['currentlyWorking', 'client'],
-      })
-    }
-
-    if (currentClient && currentTask && !values.eta.trim()) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'ETA is required when an active item is set',
-        path: ['eta'],
-      })
-    }
-
-    const issue = values.blocker.issue.trim()
-    const pointPerson = values.blocker.pointPerson.trim()
-
-    if (issue && !pointPerson) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Name the Point Person who needs to answer',
-        path: ['blocker', 'pointPerson'],
-      })
-    }
-
-    if (pointPerson && !issue) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Describe the specific blocker',
-        path: ['blocker', 'issue'],
-      })
-    }
-
-    const filledCompleted = values.completed.filter(
-      (item) => item.client.trim() || item.task.trim(),
-    )
-    for (const [index, item] of values.completed.entries()) {
-      if (!item.client.trim() && !item.task.trim()) continue
+    values.blocker.forEach((item, index) => {
+      if (!item.client.trim() && !item.issue.trim() && !item.pointPerson.trim()) return
       if (!item.client.trim()) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'Client is required',
-          path: ['completed', index, 'client'],
+          message: 'Client / project is required',
+          path: ['blocker', index, 'client'],
         })
       }
-      if (!item.task.trim()) {
+      if (!item.issue.trim()) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'Deliverable is required',
-          path: ['completed', index, 'task'],
+          message: 'Describe the blocker',
+          path: ['blocker', index, 'issue'],
         })
       }
-    }
-
-    if (filledCompleted.length === 0) {
-      // Allow empty completed early in the week — not an error
-    }
+      if (!item.pointPerson.trim()) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Name the point person',
+          path: ['blocker', index, 'pointPerson'],
+        })
+      }
+    })
   })
 
 export type CheckInDraftValues = z.infer<typeof checkInDraftSchema>

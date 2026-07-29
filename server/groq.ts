@@ -40,11 +40,8 @@ export const proposedCheckInSchema = z.object({
   analysis: z.string().default(''),
   projects: z.string().default(''),
   currentlyWorking: z
-    .object({
-      client: z.string().default(''),
-      task: z.string().default(''),
-    })
-    .default({ client: '', task: '' }),
+    .array(z.object({ client: z.string().default(''), task: z.string().default('') }))
+    .default([]),
   completed: z
     .array(
       z.object({
@@ -53,15 +50,16 @@ export const proposedCheckInSchema = z.object({
       }),
     )
     .default([]),
-  pending: z.string().default(''),
+  pending: z.array(z.object({ client: z.string().default(''), task: z.string().default('') })).default([]),
   blocker: z
-    .object({
+    .array(z.object({
+      client: z.string().default(''),
       issue: z.string().default(''),
       pointPerson: z.string().default(''),
-    })
-    .default({ issue: '', pointPerson: '' }),
-  helpFrom: z.string().default(''),
-  eta: z.string().default(''),
+    }))
+    .default([]),
+  helpFrom: z.array(z.object({ client: z.string().default(''), task: z.string().default('') })).default([]),
+  eta: z.array(z.object({ client: z.string().default(''), task: z.string().default('') })).default([]),
   notes: z.array(z.string()).default([]),
 })
 
@@ -116,12 +114,12 @@ export interface ProposeCheckInInput {
   }
   existingDraft?: {
     projects?: string
-    currentlyWorking?: { client?: string; task?: string }
+    currentlyWorking?: Array<{ client: string; task: string }>
     completed?: Array<{ client: string; task: string }>
-    pending?: string
-    blocker?: { issue?: string; pointPerson?: string }
-    helpFrom?: string
-    eta?: string
+    pending?: Array<{ client: string; task: string }>
+    blocker?: Array<{ client: string; issue: string; pointPerson: string }>
+    helpFrom?: Array<{ client: string; task: string }>
+    eta?: Array<{ client: string; task: string }>
   }
   worklogEntries: Array<{
     time: string
@@ -229,7 +227,7 @@ PROCESS (mandatory):
 3) Fill all check-in fields from that analysis. Prefer in-scope rows only.
 
 Return ONLY valid JSON matching:
-{"analysis":string,"projects":string,"currentlyWorking":{"client":string,"task":string},"completed":[{"client":string,"task":string}],"pending":string,"blocker":{"issue":string,"pointPerson":string},"helpFrom":string,"eta":string,"notes":[string]}
+{"analysis":string,"projects":string,"currentlyWorking":[{"client":string,"task":string}],"completed":[{"client":string,"task":string}],"pending":[{"client":string,"task":string}],"blocker":[{"client":string,"issue":string,"pointPerson":string}],"helpFrom":[{"client":string,"task":string}],"eta":[{"client":string,"task":string}],"notes":[string]}
 
 MWF report window (America/New_York). Two coverage modes — use reportScope.mode / coverage / startDate–endDate exactly:
 
@@ -245,8 +243,8 @@ segment (since last check-in):
 
 Slack output shape (match this voice):
 - Date label like "Monday, July 27, 2026 (Monday Report)"
-- Group completed deliverables under each client, with one "Task:" line per deliverable.
-- Organize pending, blockers, help, and ETAs by "Client: Alchemydev — Project" when multiple projects are present.
+- Every section is an array grouped by client/project.
+- Return at most ONE object per client in each section. Consolidate all of that client's details into its single task/issue field using newline-separated items.
 
 Field rules:
 - Status report, NOT a timesheet. Specific names/deliverables — never vague "development work".
@@ -257,12 +255,13 @@ Field rules:
 - currentlyWorking means work actively in progress at report time, not simply the latest logged entry.
 - Leave both currentlyWorking fields empty when the evidence only shows completed work, queued work, monitoring/standby, or no explicit active item. Never promote the latest worklog automatically.
 - When active work is explicitly evidenced, currentlyWorking.client should be "Client — Project" and task should be the deliverable plus concise status.
-- completed: ONE object PER DELIVERABLE. Same client may appear on multiple rows. task = single deliverable summary (not newline-separated lists). Never invent work.
-- pending: REQUIRED when unfinished/queued work exists. Use newlines between items when listing several.
+- completed: ONE object PER CLIENT. Put all deliverables for that client in one newline-separated task string. Never invent work.
+- pending: ONE object PER CLIENT when unfinished/queued work exists.
 - blocker: fill only when evidenced; never invent Point Person names. Include role/context in parentheses when helpful.
+- For every blocker, extract the Point Person from that same client's source document. Recognize labels such as "Point Person", "Point Person to answer this", "Owner", "Blocked by", and "Who can unblock". Preserve multiple named people (for example "Kev or Aldrin"). Never leave pointPerson empty when the document explicitly names one.
 - helpFrom: non-blocking asks; one person per line as "Name — what you need".
 - eta: required only when currentlyWorking is set. Otherwise include useful pending milestones when evidenced, or leave empty.
-- Prefer existingDraft.completed; append new deliverables as new objects (do not merge into one client row).
+- Consolidate duplicate client spellings and never return multiple objects for the same project within a section.
 Keep the JSON compact.`
 
 
@@ -432,35 +431,17 @@ function buildDeterministicCheckInDraft(
 
   const completed = normalizeProposedCompleted([...completedMap.values()])
 
-  const pendingFromExisting = existingDraft?.pending?.trim() || ''
-  const pending =
-    pendingFromExisting ||
-    analysis.signals.queuedNext.join('; ')
-
   return {
     analysis: analysis.analysis,
     projects: projects.join(', ') || existingDraft?.projects || '',
     // A historical worklog cannot establish what is active at report time.
     // Preserve an explicitly entered active item; otherwise report None.
-    currentlyWorking: {
-      client: existingDraft?.currentlyWorking?.client?.trim() || '',
-      task: existingDraft?.currentlyWorking?.task?.trim() || '',
-    },
+    currentlyWorking: existingDraft?.currentlyWorking ?? [],
     completed,
-    pending,
-    blocker: {
-      issue:
-        existingDraft?.blocker?.issue?.trim() ||
-        analysis.signals.blockerHints[0] ||
-        '',
-      pointPerson: existingDraft?.blocker?.pointPerson?.trim() || '',
-    },
-    helpFrom:
-      existingDraft?.helpFrom?.trim() || analysis.signals.helpHints[0] || '',
-    eta:
-      existingDraft?.eta?.trim() ||
-      analysis.signals.etaHints[0] ||
-      '',
+    pending: existingDraft?.pending ?? [],
+    blocker: existingDraft?.blocker ?? [],
+    helpFrom: existingDraft?.helpFrom ?? [],
+    eta: existingDraft?.eta ?? [],
     notes: [reason, `Analysis: ${analysis.analysis}`],
   }
 }
@@ -532,12 +513,12 @@ export async function proposeCheckInDraftWithGroq(
         reportScope: scope ?? null,
         existingDraft: {
           projects: input.existingDraft?.projects ?? '',
-          currentlyWorking: input.existingDraft?.currentlyWorking ?? {},
+          currentlyWorking: input.existingDraft?.currentlyWorking ?? [],
           completed: (input.existingDraft?.completed ?? []).slice(0, 8),
-          pending: input.existingDraft?.pending ?? '',
-          blocker: input.existingDraft?.blocker ?? {},
-          helpFrom: input.existingDraft?.helpFrom ?? '',
-          eta: input.existingDraft?.eta ?? '',
+          pending: input.existingDraft?.pending ?? [],
+          blocker: input.existingDraft?.blocker ?? [],
+          helpFrom: input.existingDraft?.helpFrom ?? [],
+          eta: input.existingDraft?.eta ?? [],
         },
         worklogEntries: entriesForPrompt,
         sourceDocuments,
@@ -553,13 +534,6 @@ export async function proposeCheckInDraftWithGroq(
             analysis: coerceAnalysisText(
               (raw as Record<string, unknown>).analysis,
             ),
-            pending: coerceAnalysisText(
-              (raw as Record<string, unknown>).pending,
-            ),
-            helpFrom: coerceAnalysisText(
-              (raw as Record<string, unknown>).helpFrom,
-            ),
-            eta: coerceAnalysisText((raw as Record<string, unknown>).eta),
             notes: coerceStringList((raw as Record<string, unknown>).notes),
           }
         : raw
@@ -572,22 +546,49 @@ export async function proposeCheckInDraftWithGroq(
     const analysis =
       parsed.data.analysis ||
       buildFallbackCheckInAnalysis(entriesForPrompt, scope).analysis
+    const filenameProjects = [
+      ...new Set(
+        sourceDocuments
+          .map((document) => document.clientProject?.trim())
+          .filter((project): project is string => Boolean(project)),
+      ),
+    ]
+    const normalizeClientKey = (value: string) =>
+      value
+        .toLowerCase()
+        .replace(/^alchemydev\s*[-–—:]\s*/i, '')
+        .replace(/[^a-z0-9]+/g, '')
+    const canonicalClient = (value: string) => {
+      const key = normalizeClientKey(value)
+      return (
+        filenameProjects.find((project) => normalizeClientKey(project) === key) ||
+        filenameProjects.find((project) => {
+          const projectKey = normalizeClientKey(project)
+          return key.includes(projectKey) || projectKey.includes(key)
+        }) ||
+        value.trim()
+      )
+    }
+    const canonicalItems = (items: Array<{ client: string; task: string }>) =>
+      items.map((item) => ({ ...item, client: canonicalClient(item.client) }))
 
     return {
       ...parsed.data,
       analysis,
-      completed: normalizeProposedCompleted(parsed.data.completed),
-      currentlyWorking: {
-        client: parsed.data.currentlyWorking.client.trim(),
-        task: parsed.data.currentlyWorking.task.trim(),
-      },
-      blocker: {
-        issue: parsed.data.blocker.issue.trim(),
-        pointPerson: parsed.data.blocker.pointPerson.trim(),
-      },
-      pending: parsed.data.pending.trim(),
-      helpFrom: parsed.data.helpFrom.trim(),
-      eta: parsed.data.eta.trim(),
+      projects: filenameProjects.length
+        ? filenameProjects.join(', ')
+        : parsed.data.projects,
+      completed: normalizeProposedCompleted(canonicalItems(parsed.data.completed)),
+      currentlyWorking: normalizeProposedCompleted(canonicalItems(parsed.data.currentlyWorking)),
+      pending: normalizeProposedCompleted(canonicalItems(parsed.data.pending)),
+      blocker: normalizeProposedBlockers(
+        parsed.data.blocker.map((item) => ({
+          ...item,
+          client: canonicalClient(item.client),
+        })),
+      ),
+      helpFrom: normalizeProposedCompleted(canonicalItems(parsed.data.helpFrom)),
+      eta: normalizeProposedCompleted(canonicalItems(parsed.data.eta)),
       notes: [`Analysis: ${analysis}`, ...parsed.data.notes].slice(0, 6),
     }
   } catch (error) {
@@ -610,12 +611,11 @@ export async function proposeCheckInDraftWithGroq(
   }
 }
 
-/** One object per deliverable; expands legacy multi-line task fields. */
+/** One object per client; consolidates all of that client's lines. */
 function normalizeProposedCompleted(
   items: Array<{ client: string; task: string }>,
 ): Array<{ client: string; task: string }> {
-  const seen = new Set<string>()
-  const result: Array<{ client: string; task: string }> = []
+  const grouped = new Map<string, { client: string; tasks: string[] }>()
 
   for (const item of items) {
     const client = item.client.trim()
@@ -624,24 +624,40 @@ function normalizeProposedCompleted(
       .map((line) => line.replace(/^[-*•]\s*/, '').trim())
       .filter(Boolean)
     if (!client && taskLines.length === 0) continue
-
-    if (taskLines.length === 0) {
-      const key = `${client.toLowerCase()}::`
-      if (seen.has(key)) continue
-      seen.add(key)
-      result.push({ client, task: '' })
-      continue
-    }
-
+    const key = client.toLowerCase()
+    const group = grouped.get(key) ?? { client, tasks: [] }
     for (const task of taskLines) {
-      const key = `${client.toLowerCase()}::${task.toLowerCase()}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      result.push({ client, task })
+      if (!group.tasks.some((prior) => prior.toLowerCase() === task.toLowerCase())) {
+        group.tasks.push(task)
+      }
     }
+    grouped.set(key, group)
   }
 
-  return result
+  return [...grouped.values()].map(({ client, tasks }) => ({
+    client,
+    task: tasks.join('\n'),
+  }))
+}
+
+function normalizeProposedBlockers(
+  items: Array<{ client: string; issue: string; pointPerson: string }>,
+) {
+  const grouped = new Map<string, { client: string; issue: string[]; pointPerson: string[] }>()
+  for (const item of items) {
+    const client = item.client.trim()
+    if (!client && !item.issue.trim() && !item.pointPerson.trim()) continue
+    const key = client.toLowerCase()
+    const group = grouped.get(key) ?? { client, issue: [], pointPerson: [] }
+    if (item.issue.trim()) group.issue.push(item.issue.trim())
+    if (item.pointPerson.trim()) group.pointPerson.push(item.pointPerson.trim())
+    grouped.set(key, group)
+  }
+  return [...grouped.values()].map((item) => ({
+    client: item.client,
+    issue: [...new Set(item.issue)].join('\n'),
+    pointPerson: [...new Set(item.pointPerson)].join('\n'),
+  }))
 }
 
 export interface LoggerChatMessage {
@@ -703,12 +719,12 @@ export interface LoggerChatContext {
     dateLabel?: string
     weekKey?: string
     projects?: string
-    currentlyWorking?: { client?: string; task?: string }
+    currentlyWorking?: Array<{ client: string; task: string }>
     completedCount?: number
     completedPreview?: Array<{ client: string; task: string }>
-    pending?: string
+    pending?: Array<{ client: string; task: string }>
     hasBlocker?: boolean
-    eta?: string
+    eta?: Array<{ client: string; task: string }>
   }
   checkInWorklogPreview?: Array<{
     time: string

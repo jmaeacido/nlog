@@ -209,12 +209,18 @@ export function LoggerChat() {
         dateLabel: checkInDraft.dateLabel || undefined,
         weekKey: checkInDraft.weekKey || undefined,
         projects: checkInDraft.projects || undefined,
-        currentlyWorking: checkInDraft.currentlyWorking,
+        currentlyWorking: checkInDraft.currentlyWorking
+          .filter((item) => item.client.trim() || item.task.trim())
+          .map((item) => ({ client: item.client, task: item.task })),
         completedCount: completedPreview.length,
         completedPreview,
-        pending: checkInDraft.pending || undefined,
-        hasBlocker: Boolean(checkInDraft.blocker.issue.trim()),
-        eta: checkInDraft.eta || undefined,
+        pending: checkInDraft.pending
+          .filter((item) => item.client.trim() || item.task.trim())
+          .map((item) => ({ client: item.client, task: item.task })),
+        hasBlocker: checkInDraft.blocker.some((item) => item.issue.trim()),
+        eta: checkInDraft.eta
+          .filter((item) => item.client.trim() || item.task.trim())
+          .map((item) => ({ client: item.client, task: item.task })),
       },
       checkInWorklogPreview: billableItems.slice(-8).map((item) => ({
         time: item.time,
@@ -261,8 +267,8 @@ export function LoggerChat() {
 
       setPendingCheckIn(proposed)
       const preview = [
-        proposed.currentlyWorking.client
-          ? `Current: ${proposed.currentlyWorking.client} — ${proposed.currentlyWorking.task}`
+        proposed.currentlyWorking.length
+          ? `Current (${proposed.currentlyWorking.length}): ${proposed.currentlyWorking.map((item) => item.client).join(', ')}`
           : null,
         proposed.completed.length
           ? `Completed (${proposed.completed.length}): ${proposed.completed

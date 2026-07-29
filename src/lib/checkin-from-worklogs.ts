@@ -151,13 +151,13 @@ export function buildCheckInPrefillFromEntries(
     draftPatch: {
       projects: projects.join(', '),
       // Worklogs prove work happened; they do not prove it is still active now.
-      currentlyWorking: { client: '', task: '' },
+      currentlyWorking: [{ id: crypto.randomUUID(), client: '', task: '' }],
       completed: completed.length > 0 ? completed : [emptyCompletedItem()],
       // Clear period-specific fields so stale values from another coverage don't linger
-      pending: '',
-      blocker: { issue: '', pointPerson: '' },
-      helpFrom: '',
-      eta: '',
+      pending: [{ id: crypto.randomUUID(), client: '', task: '' }],
+      blocker: [{ id: crypto.randomUUID(), client: '', task: '', issue: '', pointPerson: '' }],
+      helpFrom: [{ id: crypto.randomUUID(), client: '', task: '' }],
+      eta: [{ id: crypto.randomUUID(), client: '', task: '' }],
       weekKey: scope.weekKey,
     },
     weekEntryCount: pool.length,

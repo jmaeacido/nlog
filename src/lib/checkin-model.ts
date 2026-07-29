@@ -1,15 +1,13 @@
-export interface CheckInCompletedItem {
+export interface CheckInClientItem {
   id: string
   client: string
   task: string
 }
 
-export interface CheckInCurrentlyWorking {
-  client: string
-  task: string
-}
+export type CheckInCompletedItem = CheckInClientItem
+export type CheckInCurrentlyWorking = CheckInClientItem
 
-export interface CheckInBlocker {
+export interface CheckInBlocker extends CheckInClientItem {
   issue: string
   pointPerson: string
 }
@@ -18,12 +16,12 @@ export interface CheckInDraft {
   name: string
   dateLabel: string
   projects: string
-  currentlyWorking: CheckInCurrentlyWorking
+  currentlyWorking: CheckInClientItem[]
   completed: CheckInCompletedItem[]
-  pending: string
-  blocker: CheckInBlocker
-  helpFrom: string
-  eta: string
+  pending: CheckInClientItem[]
+  blocker: CheckInBlocker[]
+  helpFrom: CheckInClientItem[]
+  eta: CheckInClientItem[]
   weekKey: string
 }
 
@@ -268,6 +266,20 @@ export function emptyCompletedItem(): CheckInCompletedItem {
   }
 }
 
+export function emptyClientItem(): CheckInClientItem {
+  return emptyCompletedItem()
+}
+
+export function emptyBlockerItem(): CheckInBlocker {
+  return {
+    id: crypto.randomUUID(),
+    client: '',
+    task: '',
+    issue: '',
+    pointPerson: '',
+  }
+}
+
 /** Split a completed task field into one deliverable per line. */
 export function splitCompletedTasks(task: string): string[] {
   return task
@@ -276,41 +288,161 @@ export function splitCompletedTasks(task: string): string[] {
     .filter(Boolean)
 }
 
+export function normalizeCheckInClientName(client: string): string {
+  return client
+    .trim()
+    .replace(/^alchemydev\s*[-–—:]\s*/i, '')
+    .replace(/\s+/g, ' ')
+}
+
+function checkInClientKey(client: string): string {
+  return normalizeCheckInClientName(client)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+}
+
+function splitEmbeddedClientBlocks(
+  fallbackClient: string,
+  content: string,
+): Array<{ client: string; task: string }> {
+  const blocks: Array<{ client: string; lines: string[] }> = []
+  let current: { client: string; lines: string[] } | null = null
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.trim()
+    const match = line.match(/^client\s*:\s*(.+)$/i)
+    if (match) {
+      current = {
+        client: normalizeCheckInClientName(match[1]),
+        lines: [],
+      }
+      blocks.push(current)
+      continue
+    }
+    if (current && line) {
+      current.lines.push(line.replace(/^(?:task|pending|eta)\s*:\s*/i, ''))
+    }
+  }
+  if (!blocks.length) {
+    return [{
+      client: normalizeCheckInClientName(fallbackClient),
+      task: content.trim(),
+    }]
+  }
+  return blocks.map((block) => ({
+    client: block.client,
+    task: block.lines.join('\n'),
+  }))
+}
+
 /**
  * One row per deliverable (not per client).
  * Expands legacy multi-line Task fields and dedupes identical client+task pairs.
  */
+export function consolidateClientItems<T extends CheckInClientItem>(
+  items: T[],
+): T[] {
+  const grouped = new Map<string, T>()
+
+  for (const item of items) {
+    for (const block of splitEmbeddedClientBlocks(item.client, item.task)) {
+      const client = block.client
+      if (!client && !block.task.trim()) continue
+      const key = checkInClientKey(client)
+      const prior = grouped.get(key)
+      if (!prior) {
+        grouped.set(key, { ...item, client, task: block.task.trim() })
+        continue
+      }
+      const tasks = [...splitCompletedTasks(prior.task), ...splitCompletedTasks(block.task)]
+      prior.task = [...new Set(tasks.map((task) => task.trim()).filter(Boolean))].join('\n')
+    }
+  }
+
+  return [...grouped.values()]
+}
+
+export function consolidateBlockers(items: CheckInBlocker[]): CheckInBlocker[] {
+  const grouped = new Map<string, CheckInBlocker>()
+  for (const item of items) {
+    const combined = [item.issue, item.pointPerson].filter(Boolean).join('\n')
+    const embedded = splitEmbeddedClientBlocks(item.client, combined)
+    if (/^client\s*:/im.test(combined)) {
+      for (const block of embedded) {
+        const issue: string[] = []
+        const people: string[] = []
+        let target: 'issue' | 'people' = 'issue'
+        for (const rawLine of block.task.split('\n')) {
+          if (/^point person(?: to answer this)?\s*:/i.test(rawLine)) {
+            target = 'people'
+            people.push(rawLine.replace(/^point person(?: to answer this)?\s*:\s*/i, ''))
+          } else if (/^what'?s blocking\s*:/i.test(rawLine)) {
+            target = 'issue'
+            issue.push(rawLine.replace(/^what'?s blocking\s*:\s*/i, ''))
+          } else {
+            ;(target === 'people' ? people : issue).push(rawLine)
+          }
+        }
+        const key = checkInClientKey(block.client)
+        const prior = grouped.get(key)
+        if (!prior) {
+          grouped.set(key, {
+            ...emptyBlockerItem(),
+            client: block.client,
+            issue: issue.filter(Boolean).join('\n'),
+            pointPerson: people.filter(Boolean).join('\n'),
+          })
+        } else {
+          prior.issue = [...new Set([...splitCompletedTasks(prior.issue), ...issue])].filter(Boolean).join('\n')
+          prior.pointPerson = [...new Set([...splitCompletedTasks(prior.pointPerson), ...people])].filter(Boolean).join('\n')
+        }
+      }
+      continue
+    }
+    const client = normalizeCheckInClientName(item.client)
+    if (!client && !item.issue.trim() && !item.pointPerson.trim()) continue
+    const key = checkInClientKey(client)
+    const prior = grouped.get(key)
+    if (!prior) {
+      grouped.set(key, { ...item, client, task: '' })
+      continue
+    }
+    prior.issue = [...new Set([...splitCompletedTasks(prior.issue), ...splitCompletedTasks(item.issue)])].join('\n')
+    prior.pointPerson = [...new Set([...splitCompletedTasks(prior.pointPerson), ...splitCompletedTasks(item.pointPerson)])].join('\n')
+  }
+  return [...grouped.values()]
+}
+
+function formatClientItems(items: CheckInClientItem[]): string[] {
+  const consolidated = consolidateClientItems(items)
+  if (!consolidated.length) return ['None']
+  const lines: string[] = []
+  for (const item of consolidated) {
+    lines.push(`Client: ${item.client}`)
+    for (const task of splitCompletedTasks(item.task)) lines.push(`Task: ${task}`)
+    lines.push('')
+  }
+  if (lines.at(-1) === '') lines.pop()
+  return lines
+}
+
+function formatBlockers(items: CheckInBlocker[]): string[] {
+  const consolidated = consolidateBlockers(items)
+  if (!consolidated.length) return ['None']
+  const lines: string[] = []
+  for (const item of consolidated) {
+    lines.push(`Client: ${item.client}`)
+    lines.push(`What's blocking: ${item.issue}`)
+    lines.push(`Point Person to answer this: ${item.pointPerson}`)
+    lines.push('')
+  }
+  if (lines.at(-1) === '') lines.pop()
+  return lines
+}
+
 export function normalizeCompletedDeliverables(
   items: CheckInCompletedItem[],
 ): CheckInCompletedItem[] {
-  const seen = new Set<string>()
-  const result: CheckInCompletedItem[] = []
-
-  for (const item of items) {
-    const client = item.client.trim()
-    const tasks = splitCompletedTasks(item.task)
-    if (!client && tasks.length === 0) continue
-
-    if (tasks.length === 0) {
-      const key = `${client.toLowerCase()}::`
-      if (seen.has(key)) continue
-      seen.add(key)
-      result.push({ id: item.id, client, task: '' })
-      continue
-    }
-
-    tasks.forEach((task, index) => {
-      const key = `${client.toLowerCase()}::${task.toLowerCase()}`
-      if (seen.has(key)) return
-      seen.add(key)
-      result.push({
-        id: index === 0 ? item.id : crypto.randomUUID(),
-        client,
-        task,
-      })
-    })
-  }
-
+  const result = consolidateClientItems(items)
   return result.length > 0 ? result : [emptyCompletedItem()]
 }
 
@@ -327,7 +459,7 @@ export function groupCompletedByClient(
 export function formatCompletedBlockForSlack(
   items: CheckInCompletedItem[],
 ): string[] {
-  const deliverables = normalizeCompletedDeliverables(items).filter(
+  const deliverables = consolidateClientItems(items).filter(
     (item) => item.client.trim() || item.task.trim(),
   )
 
@@ -335,19 +467,10 @@ export function formatCompletedBlockForSlack(
     return ['', 'None']
   }
 
-  const grouped = new Map<string, string[]>()
-  for (const item of deliverables) {
-    const client = item.client.trim() || '[name]'
-    const task = item.task.trim() || '[deliverable as a whole]'
-    const tasks = grouped.get(client) ?? []
-    tasks.push(task)
-    grouped.set(client, tasks)
-  }
-
   const lines: string[] = ['']
-  for (const [client, tasks] of grouped) {
-    lines.push(`Client: ${client}`)
-    for (const task of tasks) lines.push(`Task: ${task}`)
+  for (const item of deliverables) {
+    lines.push(`Client: ${item.client.trim() || '[name]'}`)
+    for (const task of splitCompletedTasks(item.task)) lines.push(`Task: ${task}`)
     lines.push('')
   }
   // Trailing blank is handled by the parent join; drop the last empty line
@@ -360,19 +483,19 @@ export function createEmptyDraft(name = CHECK_IN_CONTRACTOR_NAME): CheckInDraft 
     name,
     dateLabel: formatCheckInDateLabel(),
     projects: '',
-    currentlyWorking: { client: '', task: '' },
+    currentlyWorking: [emptyClientItem()],
     completed: [emptyCompletedItem()],
-    pending: '',
-    blocker: { issue: '', pointPerson: '' },
-    helpFrom: '',
-    eta: '',
+    pending: [emptyClientItem()],
+    blocker: [emptyBlockerItem()],
+    helpFrom: [emptyClientItem()],
+    eta: [emptyClientItem()],
     weekKey: getEstWeekKey(),
   }
 }
 
 export function createReportFromDraft(draft: CheckInDraft): CheckInReport {
   const now = new Date().toISOString()
-  const completed = normalizeCompletedDeliverables(draft.completed).filter(
+  const completed = consolidateClientItems(draft.completed).filter(
     (item) => item.client.trim() || item.task.trim(),
   )
   return {
@@ -381,7 +504,12 @@ export function createReportFromDraft(draft: CheckInDraft): CheckInReport {
     savedAt: now,
     updatedAt: now,
     weekKey: draft.weekKey || getEstWeekKey(),
+    currentlyWorking: consolidateClientItems(draft.currentlyWorking),
     completed,
+    pending: consolidateClientItems(draft.pending),
+    blocker: consolidateBlockers(draft.blocker),
+    helpFrom: consolidateClientItems(draft.helpFrom),
+    eta: consolidateClientItems(draft.eta),
   }
 }
 
@@ -396,15 +524,18 @@ export function draftFromReport(
       ? formatCheckInDateLabel()
       : report.dateLabel,
     projects: report.projects,
-    currentlyWorking: { ...report.currentlyWorking },
+    currentlyWorking:
+      report.currentlyWorking.length > 0
+        ? report.currentlyWorking.map((item) => ({ ...item }))
+        : [emptyClientItem()],
     completed:
       report.completed.length > 0
         ? report.completed.map((item) => ({ ...item }))
         : [emptyCompletedItem()],
-    pending: report.pending,
-    blocker: { ...report.blocker },
-    helpFrom: report.helpFrom,
-    eta: report.eta,
+    pending: report.pending.length ? report.pending.map((item) => ({ ...item })) : [emptyClientItem()],
+    blocker: report.blocker.length ? report.blocker.map((item) => ({ ...item })) : [emptyBlockerItem()],
+    helpFrom: report.helpFrom.length ? report.helpFrom.map((item) => ({ ...item })) : [emptyClientItem()],
+    eta: report.eta.length ? report.eta.map((item) => ({ ...item })) : [emptyClientItem()],
     weekKey: report.weekKey,
   }
 }
@@ -421,43 +552,25 @@ export function startNextDraftFrom(
     name: name ?? previous.name,
     dateLabel: formatCheckInDateLabel(),
     projects: sameWeek ? previous.projects : '',
-    currentlyWorking: { client: '', task: '' },
+    currentlyWorking: [emptyClientItem()],
     completed: sameWeek
       ? previous.completed.map((item) => ({ ...item }))
       : [emptyCompletedItem()],
-    pending: sameWeek ? previous.pending : '',
-    blocker: { issue: '', pointPerson: '' },
-    helpFrom: '',
-    eta: '',
+    pending: sameWeek ? previous.pending.map((item) => ({ ...item })) : [emptyClientItem()],
+    blocker: [emptyBlockerItem()],
+    helpFrom: [emptyClientItem()],
+    eta: [emptyClientItem()],
     weekKey,
   }
 }
 
 export function formatCheckInForSlack(draft: CheckInDraft | CheckInReport): string {
   const completedLines = formatCompletedBlockForSlack(draft.completed)
-  const currentClient = draft.currentlyWorking.client.trim()
-  const currentTask = draft.currentlyWorking.task.trim()
-  const currentLines =
-    currentClient && currentTask
-      ? [`Client: ${currentClient}`, `Task: ${currentTask}`]
-      : ['None']
-
-  const blockerIssue = draft.blocker.issue.trim()
-  const blockerPerson = draft.blocker.pointPerson.trim()
-  const blockerBlock =
-    blockerIssue || blockerPerson
-      ? [
-          'Blocker (if any):',
-          '',
-          `What's blocking: ${blockerIssue || '[specific issue, not "waiting on approval"]'}`,
-          '',
-          `Point Person to answer this: ${blockerPerson || '[name]'}`,
-        ].join('\n')
-      : ['Blocker (if any):', '', 'None'].join('\n')
-
-  const pending = draft.pending.trim()
-  const helpFrom = draft.helpFrom.trim()
-  const eta = draft.eta.trim()
+  const currentLines = formatClientItems(draft.currentlyWorking)
+  const pendingLines = formatClientItems(draft.pending)
+  const helpLines = formatClientItems(draft.helpFrom)
+  const etaLines = formatClientItems(draft.eta)
+  const blockerLines = formatBlockers(draft.blocker)
 
   return [
     `Name: ${draft.name.trim()}`,
@@ -473,17 +586,19 @@ export function formatCheckInForSlack(draft: CheckInDraft | CheckInReport): stri
     '',
     'Pending / up next:',
     '',
-    pending || '',
+    ...pendingLines,
     '',
-    blockerBlock,
+    'Blocker (if any):',
+    '',
+    ...blockerLines,
     '',
     'Who I need help or confirmation from (non-blocking, general):',
     '',
-    helpFrom || '',
+    ...helpLines,
     '',
     'ETA on current item:',
     '',
-    eta || '',
+    ...etaLines,
   ].join('\n')
 }
 

@@ -1,4 +1,8 @@
 import {
+  consolidateClientItems,
+  consolidateBlockers,
+  emptyBlockerItem,
+  emptyClientItem,
   emptyCompletedItem,
   formatCheckInDateLabel,
   getCheckInReportScope,
@@ -8,7 +12,6 @@ import {
   type CheckInDraft,
 } from '@/lib/checkin-model'
 import {
-  buildCheckInPrefillFromEntries,
   summarizeEntriesForCheckInAi,
 } from '@/lib/checkin-from-worklogs'
 import { loadWorklogsForCheckIn } from '@/lib/load-worklogs-for-checkin'
@@ -17,11 +20,142 @@ import { requestProposeCheckIn } from '@/lib/groq-client'
 import type { ProposedCheckInResult } from '@/lib/groq-types'
 import { useCheckInStore } from '@/store/checkin-store'
 
+const TEXT_HEADINGS = [
+  ['currentlyWorking', /^currently working on\s*:?\s*$/i],
+  [
+    'completed',
+    /^completed (?:this week so far|since last check-in)\b.*:?\s*$/i,
+  ],
+  ['pending', /^pending\s*\/\s*up next\s*:?\s*$/i],
+  ['blocker', /^blocker \(if any\)\s*:?\s*$/i],
+  ['helpFrom', /^who i need help (?:or|\/) confirmation from\b.*:?\s*$/i],
+  ['eta', /^eta on current item\s*:?\s*$/i],
+] as const
+
+type TextHeading = (typeof TEXT_HEADINGS)[number][0]
+
+function parseTextSections(content: string): Partial<Record<TextHeading, string>> {
+  const sections: Partial<Record<TextHeading, string[]>> = {}
+  let active: TextHeading | null = null
+  for (const rawLine of content.replace(/\r\n/g, '\n').split('\n')) {
+    const heading = TEXT_HEADINGS.find(([, pattern]) => pattern.test(rawLine.trim()))
+    if (heading) {
+      active = heading[0]
+      sections[active] ??= []
+    } else if (active) {
+      sections[active]!.push(rawLine)
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(sections).map(([key, lines]) => [
+      key,
+      (lines as string[]).join('\n').trim(),
+    ]),
+  )
+}
+
+function cleanSection(value = ''): string {
+  return value
+    .split('\n')
+    .map((line) => line.trim())
+    .map((line) => {
+      const combined = line.match(/^client\s*:\s*.+?,\s*task\s*:\s*(.+)$/i)
+      if (combined) return combined[1].trim()
+      if (/^client\s*:/i.test(line)) return ''
+      return line.replace(/^task\s*:\s*/i, '')
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
+function localTextFilePatch(
+  files: Awaited<ReturnType<typeof loadWorklogsForCheckIn>>['files'],
+): Partial<CheckInDraft> {
+  const current = []
+  const completed = []
+  const pending = []
+  const blockers = []
+  const help = []
+  const eta = []
+  const projects: string[] = []
+
+  for (const file of files) {
+    const metadata = parseCheckInFileMetadata(file.name)
+    if (!metadata) continue
+    const client = metadata.clientProject
+    if (!projects.includes(client)) projects.push(client)
+    const sections = parseTextSections(file.content)
+    const item = (task: string) => ({
+      id: crypto.randomUUID(),
+      client,
+      task: cleanSection(task),
+    })
+    if (sections.currentlyWorking) current.push(item(sections.currentlyWorking))
+    if (sections.completed) completed.push(item(sections.completed))
+    if (sections.pending) pending.push(item(sections.pending))
+    if (sections.helpFrom) help.push(item(sections.helpFrom))
+    if (sections.eta) eta.push(item(sections.eta))
+
+    if (sections.blocker) {
+      const issue: string[] = []
+      const people: string[] = []
+      let target: 'issue' | 'people' = 'issue'
+      for (const rawLine of sections.blocker.split('\n')) {
+        const line = rawLine.trim()
+        if (!line || /^client\s*:/i.test(line)) continue
+        if (/^point person(?: to answer this)?\s*:/i.test(line)) {
+          target = 'people'
+          people.push(line.replace(/^point person(?: to answer this)?\s*:\s*/i, ''))
+        } else if (/^what'?s blocking\s*:/i.test(line)) {
+          target = 'issue'
+          issue.push(line.replace(/^what'?s blocking\s*:\s*/i, ''))
+        } else {
+          ;(target === 'people' ? people : issue).push(line)
+        }
+      }
+      const issueText = issue.filter(Boolean).join('\n')
+      blockers.push({
+        id: crypto.randomUUID(),
+        client,
+        task: '',
+        issue: issueText || 'None at this time.',
+        pointPerson:
+          people.filter(Boolean).join('\n') ||
+          (/^none\b/i.test(issueText) ? 'None' : ''),
+      })
+    }
+  }
+
+  return {
+    projects: projects.join(', '),
+    currentlyWorking: current.length ? consolidateClientItems(current) : [emptyClientItem()],
+    completed: completed.length ? consolidateClientItems(completed) : [emptyCompletedItem()],
+    pending: pending.length ? consolidateClientItems(pending) : [emptyClientItem()],
+    blocker: blockers.length ? consolidateBlockers(blockers) : [emptyBlockerItem()],
+    helpFrom: help.length ? consolidateClientItems(help) : [emptyClientItem()],
+    eta: eta.length ? consolidateClientItems(eta) : [emptyClientItem()],
+  }
+}
+
 function proposedToDraftPatch(
   proposed: ProposedCheckInResult,
   base: CheckInDraft,
   mode: CheckInCoverageMode,
 ): Partial<CheckInDraft> {
+  const toItems = (items: Array<{ client: string; task: string }>) =>
+    consolidateClientItems(
+      items.map((item) => ({ id: crypto.randomUUID(), ...item })),
+    )
+  const toBlockers = (
+    items: Array<{ client: string; issue: string; pointPerson: string }>,
+  ) =>
+    consolidateBlockers(
+      items.map((item) => ({
+        id: crypto.randomUUID(),
+        task: '',
+        ...item,
+      })),
+    )
   const completed =
     proposed.completed.length > 0
       ? normalizeCompletedDeliverables(
@@ -39,26 +173,13 @@ function proposedToDraftPatch(
 
   return {
     projects: proposed.projects || base.projects,
-    currentlyWorking: {
-      client: proposed.currentlyWorking.client,
-      task: proposed.currentlyWorking.task,
-    },
+    currentlyWorking:
+      proposed.currentlyWorking.length ? toItems(proposed.currentlyWorking) : [emptyClientItem()],
     completed,
-    pending:
-      proposed.pending.trim().length > 0 ? proposed.pending : base.pending,
-    blocker: {
-      issue:
-        proposed.blocker.issue.trim().length > 0
-          ? proposed.blocker.issue
-          : base.blocker.issue,
-      pointPerson:
-        proposed.blocker.pointPerson.trim().length > 0
-          ? proposed.blocker.pointPerson
-          : base.blocker.pointPerson,
-    },
-    helpFrom:
-      proposed.helpFrom.trim().length > 0 ? proposed.helpFrom : base.helpFrom,
-    eta: proposed.eta.trim().length > 0 ? proposed.eta : base.eta,
+    pending: proposed.pending.length ? toItems(proposed.pending) : [emptyClientItem()],
+    blocker: proposed.blocker.length ? toBlockers(proposed.blocker) : [emptyBlockerItem()],
+    helpFrom: proposed.helpFrom.length ? toItems(proposed.helpFrom) : [emptyClientItem()],
+    eta: proposed.eta.length ? toItems(proposed.eta) : [emptyClientItem()],
     dateLabel: formatCheckInDateLabel(new Date(), mode),
     weekKey: scope.weekKey || base.weekKey || getEstWeekKey(),
   }
@@ -134,43 +255,20 @@ export async function prefillCheckInFromWorklogs(options?: {
     }
   }
 
-  // Plain-text status documents may not contain invoice-style tables.
-  // In that case use Logger's document-aware proposal path for Prefill too.
-  if (loaded.entries.length === 0) {
-    const result = await draftCheckInWithLogger(options)
-    return {
-      applied: result.applied,
-      weekEntryCount: 0,
-      notes: result.notes,
-    }
-  }
-
   const draft = store.draft
-  const result = buildCheckInPrefillFromEntries(loaded.entries, {
-    scope,
-    // Prefill replaces for the selected coverage window (does not keep other windows' completed)
-    mergeExistingCompleted: false,
-  })
-
-  if (!result.draftPatch.projects && !result.draftPatch.currentlyWorking) {
-    return {
-      applied: false,
-      weekEntryCount: 0,
-      notes: [...loaded.notes, ...result.notes],
-    }
-  }
-
   store.setDraft({
-    ...result.draftPatch,
+    ...localTextFilePatch(loaded.files),
     name: draft.name.trim() || options?.displayName?.trim() || draft.name,
     dateLabel: formatCheckInDateLabel(new Date(), store.coverageMode),
     weekKey: scope.weekKey,
   })
-
   return {
     applied: true,
-    weekEntryCount: result.weekEntryCount,
-    notes: [...loaded.notes, ...result.notes],
+    weekEntryCount: loaded.files.length,
+    notes: [
+      ...loaded.notes,
+      'Parsed locally from Check-In text files. No Groq API call was made.',
+    ],
   }
 }
 
@@ -185,7 +283,7 @@ export async function draftCheckInWithLogger(options?: {
   const loaded = await loadWorklogsForCheckIn({
     scope: getCheckInReportScope(new Date(), current.coverageMode),
   })
-  if (loaded.entries.length === 0) {
+  if (loaded.files.length === 0) {
     return { applied: false, notes: loaded.notes }
   }
 

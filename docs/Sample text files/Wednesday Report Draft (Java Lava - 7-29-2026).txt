@@ -1,0 +1,44 @@
+Name: John Mark Agustin E. Acido
+Date: Wednesday, July 29, 2026 (Wednesday Report)
+Project(s): Java Lava
+
+Currently working on:
+
+Client: Alchemydev — Java Lava
+Task: Blog CMS — running acceptance testing on the live Vercel deployment (Supabase configured, admin key set). Core build is deployed; remaining work is Wix iframe pages so javalava.rocks can serve /blog/ publicly.
+
+Completed this week so far (group by deliverable, not sub-steps):
+
+Client: Alchemydev — Java Lava, Task: Branded 404 page and error routing (volcanic cinematic 404, Apache/Vercel handling, noindex SEO, synchronized across all mirrors — live on javalava.rocks)
+
+Client: Alchemydev — Java Lava, Task: Blog CMS — initial build (Supabase schema with RLS, unified /api/blog serverless routes, public blog index, post page with JSON-LD, key-gated admin with rich-text editor, SEO metadata, RSS, sitemap, and deployment script)
+
+Client: Alchemydev — Java Lava, Task: Blog CMS — deployment polish and site integration (consolidated API into one function for Vercel Hobby limits, Blog nav link across all coded pages, deployment mirror sync, vendor asset restore)
+
+Client: Alchemydev — Java Lava, Task: Blog CMS — production deployment (deployed to Vercel, Supabase configured, blog admin secret key set)
+
+Pending / up next:
+
+Run the full acceptance checklist on the live Vercel deployment (create post, save draft, publish, verify /blog/, post pages, RSS, sitemap-blog, SEO, nav links)
+Wix iframe setup for blog routes — Kev / Aldrin (see blockers below, in order)
+Document blog Wix routes in the build sheet once slugs are confirmed
+Blocker (if any):
+
+What's blocking: Blog CMS is deployed on Vercel/Supabase, but javalava.rocks/blog is not public until the Wix iframe pages exist. Wix actions needed (in order):
+
+Add Wix page — slug blog → full-width iframe to https://java-lava-eta.vercel.app/blog
+Add Wix page — slug blog-post → full-width iframe to https://java-lava-eta.vercel.app/blog-post (individual posts load via ?slug= query param)
+Add Wix page — slug blog-admin → iframe to https://java-lava-eta.vercel.app/blog-admin (hide from public menu; bookmark-only access)
+Add Blog to Wix site navigation — link to /blog
+Publish all three pages
+Verify — www.javalava.rocks/blog, a sample post URL (/blog-post?slug=...), and admin access
+Point Person to answer this: Kev or Aldrin (Wix iframe setup and publish)
+
+Who I need help or confirmation from (non-blocking, general):
+
+Kev — Wix iframe pages per the steps above; SEO/content expectations for the first posts once /blog/ goes live
+Aldrin — Wix publish for the blog routes
+ETA on current item:
+
+Acceptance checklist on live Vercel deployment: Thursday, July 31, 2026
+Public /blog/ on javalava.rocks (pending Kev/Aldrin Wix steps above): as soon as Wix pages are published

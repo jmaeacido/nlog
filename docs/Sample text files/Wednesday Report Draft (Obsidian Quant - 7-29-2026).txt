@@ -1,0 +1,43 @@
+Name: John Mark Agustin E. Acido
+Date: Wednesday, July 29, 2026 (Wednesday Report)
+Project(s): Obsidian Quant
+
+Currently working on:
+
+Client: Alchemydev — Obsidian Quant
+Task: Blog CMS — local acceptance is done and the core delivery is merged to main; two follow-up PRs are open for Arvin’s staging review before production cutover (Postgres + Node on the VPS, nginx proxy per DEPLOY.md).
+
+Completed since last check-in (Monday, July 27):
+
+Client: Alchemydev — Obsidian Quant, Task: Blog CMS — acceptance QA and defect fixes (ran the full §22 checklist locally via scripts/acceptance-qa.mjs — 15/15 PASS; fixed published-slug redirect creation, a Next.js redirect() catch that 404’d old URLs, and missing featured-image alt editing)
+
+Client: Alchemydev — Obsidian Quant, Task: Blog CMS — §3.2 deferred modules (user management, import/export backup, GA/GSC settings + on-site analytics dashboard, Groq AI assists in the editor, newsletter signup + subscriber admin, moderated comments — acceptance harness expanded to 21/21 PASS)
+
+Client: Alchemydev — Obsidian Quant, Task: Blog CMS — PR #37 merged to main (Blog CMS + Node runtime delivery, cutover checklist in DEPLOY.md; pre-merge hardening: nginx upstream moved to :3006, magic-byte upload validation, uploads path containment)
+
+Client: Alchemydev — Obsidian Quant, Task: Blog CMS — admin trash/delete UI (soft-delete, restore, and permanent delete on dashboard and editor; hover-only × remove for in-editor and featured images — merged as PR #38)
+
+Client: Alchemydev — Obsidian Quant, Task: Blog CMS — public route migration to /insights (activated /insights as the canonical blog hub; /blog and sub-routes redirect to /insights; nav, footer, SEO, link health, and tests updated — PR #39 open for review)
+
+Client: Alchemydev — Obsidian Quant, Task: Blog CMS — editor media polish and upload fix (Word-style image layout/size toolbar, video center/full toolbar, text alignment buttons, paste/drag-drop upload, nginx client_max_body_size 55m for the 413/HTML-parse error, dashboard action-row layout fix — PR #40 open for review)
+
+Pending / up next:
+
+Arvin — review and merge PRs #39 (/insights routing) and #40 (editor media + upload fix) on staging/preview
+Arvin — run the VPS cutover per DEPLOY.md (Postgres, DATABASE_URL, uploads dir, deploy script with prisma migrate deploy, nginx proxy include, smoke-test on preview then prod)
+After cutover — publish a first real post end-to-end and confirm sitemap/RSS/redirects on live /insights/
+Decide next Blog CMS phase after launch based on team direction (anything left in §3.2 not yet prioritized, content import, etc.)
+Blocker (if any):
+
+What's blocking: Blog CMS code is on main but production still serves the static dist/ build — the VPS needs Postgres, Node (next start on :3006), and the nginx proxy/cutover steps before /insights/ and /admin/ go live.
+
+Point Person to answer this: Arvin (deploy approval, VPS/infra sign-off, staging merge of #39 and #40)
+
+Who I need help or confirmation from (non-blocking, general):
+
+Arvin — review PRs #39 and #40 on preview; approve and execute the production cutover checklist
+Kev — confirm /insights as the public blog label/path and any SEO or content expectations for the first posts once it goes live
+ETA on current item:
+
+Staging review + merge of #39 and #40: Thursday, July 31, 2026 (depends on Arvin)
+Production Blog CMS go-live (pending VPS cutover): Friday, July 31, 2026 (unchanged; blocked on infra, not code)

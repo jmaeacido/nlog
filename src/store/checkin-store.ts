@@ -2,10 +2,14 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import {
   completedLinesForWeek,
+  consolidateBlockers,
+  consolidateClientItems,
   CHECK_IN_CONTRACTOR_NAME,
   createEmptyDraft,
   createReportFromDraft,
   draftFromReport,
+  emptyBlockerItem,
+  emptyClientItem,
   getEstWeekKey,
   startNextDraftFrom,
   type CheckInCompletedItem,
@@ -19,6 +23,54 @@ import {
 } from '@/data/last-checkin-report'
 
 const MAX_ENTRIES = 100
+
+function migrateClientItems(value: unknown, legacyClient = '') {
+  if (Array.isArray(value)) {
+    return value.map((item) => ({
+      id: typeof item?.id === 'string' ? item.id : crypto.randomUUID(),
+      client: typeof item?.client === 'string' ? item.client : legacyClient,
+      task: typeof item?.task === 'string' ? item.task : '',
+    }))
+  }
+  if (typeof value === 'string') {
+    return [{ ...emptyClientItem(), client: legacyClient, task: value }]
+  }
+  if (value && typeof value === 'object') {
+    const item = value as { client?: string; task?: string }
+    return [{ ...emptyClientItem(), client: item.client ?? legacyClient, task: item.task ?? '' }]
+  }
+  return [emptyClientItem()]
+}
+
+function migrateDraft(value: CheckInDraft): CheckInDraft {
+  const legacy = value as CheckInDraft & {
+    blocker?: unknown
+    pending?: unknown
+    helpFrom?: unknown
+    eta?: unknown
+  }
+  const defaultClient =
+    migrateClientItems(legacy.completed).find((item) => item.client.trim())?.client ?? ''
+  const blockers = Array.isArray(legacy.blocker)
+    ? legacy.blocker.map((item) => ({ ...emptyBlockerItem(), ...item }))
+    : legacy.blocker && typeof legacy.blocker === 'object'
+      ? [{
+          ...emptyBlockerItem(),
+          client: defaultClient,
+          issue: String((legacy.blocker as { issue?: unknown }).issue ?? ''),
+          pointPerson: String((legacy.blocker as { pointPerson?: unknown }).pointPerson ?? ''),
+        }]
+      : [emptyBlockerItem()]
+  return {
+    ...value,
+    currentlyWorking: consolidateClientItems(migrateClientItems(legacy.currentlyWorking)),
+    completed: consolidateClientItems(migrateClientItems(legacy.completed)),
+    pending: consolidateClientItems(migrateClientItems(legacy.pending, defaultClient)),
+    blocker: consolidateBlockers(blockers),
+    helpFrom: consolidateClientItems(migrateClientItems(legacy.helpFrom, defaultClient)),
+    eta: consolidateClientItems(migrateClientItems(legacy.eta, defaultClient)),
+  }
+}
 
 interface CheckInState {
   draft: CheckInDraft
@@ -111,17 +163,25 @@ export const useCheckInStore = create<CheckInState>()(
 
       ensureDraftForSession: (_displayName) => {
         const state = get()
+        const cleanedDraft = migrateDraft(state.draft)
+        const cleanedEntries = state.entries.map(
+          (entry) => migrateDraft(entry) as CheckInReport,
+        )
+        set({ draft: cleanedDraft, entries: cleanedEntries })
         const weekKey = getEstWeekKey()
         const name = CHECK_IN_CONTRACTOR_NAME
-        const sameWeekNewest = newestSameWeekEntry(state.entries, weekKey)
+        const sameWeekNewest = newestSameWeekEntry(cleanedEntries, weekKey)
 
         // Empty / stale draft: seed from same-week report or fresh empty
         const draftIsBlank =
-          !state.draft.projects.trim() &&
-          !state.draft.currentlyWorking.client.trim() &&
-          !state.draft.currentlyWorking.task.trim() &&
-          !state.draft.eta.trim() &&
-          state.draft.completed.every(
+          !cleanedDraft.projects.trim() &&
+          cleanedDraft.currentlyWorking.every(
+            (item) => !item.client.trim() && !item.task.trim(),
+          ) &&
+          cleanedDraft.eta.every(
+            (item) => !item.client.trim() && !item.task.trim(),
+          ) &&
+          cleanedDraft.completed.every(
             (item) => !item.client.trim() && !item.task.trim(),
           )
 
@@ -135,7 +195,7 @@ export const useCheckInStore = create<CheckInState>()(
           return
         }
 
-        if (state.draft.weekKey !== weekKey) {
+        if (cleanedDraft.weekKey !== weekKey) {
           if (sameWeekNewest) {
             set({
               draft: draftFromReport(sameWeekNewest, {
@@ -154,7 +214,7 @@ export const useCheckInStore = create<CheckInState>()(
           return
         }
 
-        if (name && state.draft.name !== name) {
+        if (name && cleanedDraft.name !== name) {
           set((current) => ({
             draft: { ...current.draft, name },
           }))
@@ -233,7 +293,9 @@ export const useCheckInStore = create<CheckInState>()(
 
       ensureLastRecordedCheckIn: () => {
         const state = get()
-        const already = state.entries.some(isLastRecordedCheckIn)
+        const already = state.entries.some(
+          (entry) => entry.id === LAST_RECORDED_CHECK_IN.id,
+        )
         if (already) return false
 
         const report: CheckInReport = {
@@ -244,7 +306,10 @@ export const useCheckInStore = create<CheckInState>()(
         }
 
         set((current) => ({
-          entries: [report, ...current.entries].slice(0, MAX_ENTRIES),
+          entries: [
+            report,
+            ...current.entries.filter((entry) => !isLastRecordedCheckIn(entry)),
+          ].slice(0, MAX_ENTRIES),
           draft: draftFromReport(report),
         }))
         return true
@@ -257,7 +322,7 @@ export const useCheckInStore = create<CheckInState>()(
     }),
     {
       name: 'nlog-checkins',
-      version: 2,
+      version: 5,
       migrate: (persisted) => {
         const state = persisted as {
           draft?: CheckInDraft
@@ -265,8 +330,8 @@ export const useCheckInStore = create<CheckInState>()(
           coverageMode?: CheckInCoverageMode
         }
         return {
-          draft: state.draft ?? createEmptyDraft(),
-          entries: state.entries ?? [],
+          draft: state.draft ? migrateDraft(state.draft) : createEmptyDraft(),
+          entries: (state.entries ?? []).map((entry) => migrateDraft(entry) as CheckInReport),
           coverageMode: state.coverageMode ?? 'week_to_date',
         }
       },

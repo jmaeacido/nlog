@@ -1,0 +1,39 @@
+Name: John Mark Agustin E. Acido
+Date: Wednesday, July 29, 2026 (Wednesday Report)
+Project(s): Zoey Brinxx
+
+Currently working on:
+
+Client: Alchemydev — Zoey Brinxx
+Task: Official brand site — running acceptance testing on the live Vercel deployment (https://zoey-brinxx.vercel.app). Core build is deployed; remaining work is the full live acceptance pass and any final polish from findings.
+
+Completed this week so far (group by deliverable, not sub-steps):
+
+Client: Alchemydev — Zoey Brinxx, Task: Initial Vercel-ready Next.js site build (branded homepage with hero, story, motherhood, reach, media, partnerships, and contact sections; shared layout and global styling; optional ChatGPT sign-in helper; rendered HTML test coverage; core assets and package configuration for local development and Vercel delivery)
+
+Client: Alchemydev — Zoey Brinxx, Task: Stack cleanup and deployment-readiness refinement (removed unused Drizzle, worker, Vite, and auxiliary build remnants; switched homepage images to Next.js Image; added vercel.json; tightened .gitignore and .npmrc; updated README deployment guidance)
+
+Client: Alchemydev — Zoey Brinxx, Task: Hero image replacement and presentation tuning (replaced hero visual with supplied photography, updated alt text, adjusted framing in global styles)
+
+Client: Alchemydev — Zoey Brinxx, Task: Branding, social, and asset integration (single-line ZOEY BRINXX wordmark in header, TikTok added to reach grid and footer, motherhood-section background integrated, featured-video thumbnail replaced from supplied asset, production build verified)
+
+Client: Alchemydev — Zoey Brinxx, Task: Responsive layout optimization and mobile navigation (desktop and mobile breakpoint rework across homepage, horizontal overflow fixes in story section and ticker, full-viewport mobile nav overlay with body scroll lock, resize/escape dismissal, and accessibility improvements)
+
+Client: Alchemydev — Zoey Brinxx, Task: Production deployment (deployed to Vercel — live at https://zoey-brinxx.vercel.app)
+
+Pending / up next:
+
+Run the full acceptance checklist on the live Vercel deployment (homepage sections, section anchors, social outbound links, featured video modal, mobile nav, responsive breakpoints, SEO metadata)
+Document production URL in the build sheet
+Custom domain setup with Kev (if applicable)
+Blocker (if any):
+
+None at this time.
+
+Who I need help or confirmation from (non-blocking, general):
+
+Kev — custom domain/DNS setup if one is assigned for this project; final brand/content sign-off before any public launch beyond the Vercel URL
+
+ETA on current item:
+
+Live acceptance checklist on Vercel deployment: Thursday, July 31, 2026

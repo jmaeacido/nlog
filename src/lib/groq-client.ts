@@ -61,12 +61,12 @@ export async function requestProposeCheckIn(input: {
   }
   existingDraft?: {
     projects?: string
-    currentlyWorking?: { client?: string; task?: string }
+    currentlyWorking?: Array<{ client: string; task: string }>
     completed?: Array<{ client: string; task: string }>
-    pending?: string
-    blocker?: { issue?: string; pointPerson?: string }
-    helpFrom?: string
-    eta?: string
+    pending?: Array<{ client: string; task: string }>
+    blocker?: Array<{ client: string; issue: string; pointPerson: string }>
+    helpFrom?: Array<{ client: string; task: string }>
+    eta?: Array<{ client: string; task: string }>
   }
   worklogEntries: Array<{
     time: string

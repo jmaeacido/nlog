@@ -113,7 +113,9 @@ export async function loadWorklogsForCheckIn(options?: {
         malformed.push(file.name)
         continue
       }
-      if (metadata.date < scope.startDate || metadata.date > scope.endDate) {
+      // Each dated draft is a complete snapshot for that report day. Loading
+      // Monday and Wednesday snapshots together duplicates and mixes projects.
+      if (metadata.date !== scope.endDate) {
         outsideScope.push(file.name)
         continue
       }
@@ -138,7 +140,7 @@ export async function loadWorklogsForCheckIn(options?: {
     }
     if (outsideScope.length > 0) {
       notes.push(
-        `Excluded ${outsideScope.length} file${outsideScope.length === 1 ? '' : 's'} outside ${scope.coverage}.`,
+        `Excluded ${outsideScope.length} file${outsideScope.length === 1 ? '' : 's'} not dated ${scope.endDate}.`,
       )
     }
     for (const result of results) {
@@ -159,7 +161,7 @@ export async function loadWorklogsForCheckIn(options?: {
         notes.length > 0
           ? notes
           : [
-              `No correctly named .txt files matched ${scope.startDate} through ${scope.endDate}.`,
+              `No correctly named .txt files matched report date ${scope.endDate}.`,
             ],
     }
   }
@@ -181,7 +183,7 @@ export async function loadWorklogsForCheckIn(options?: {
     entries: parsed.entries,
     source: 'checkin-folder',
     notes: [
-      `Loaded ${worklogs.length} dated text file${worklogs.length === 1 ? '' : 's'} for ${scope.coverage} from ${links.length} saved OneDrive link${links.length === 1 ? '' : 's'}.`,
+      `Loaded ${worklogs.length} text file${worklogs.length === 1 ? '' : 's'} dated ${scope.endDate} from ${links.length} saved OneDrive link${links.length === 1 ? '' : 's'}.`,
       ...notes,
       ...parsed.errors.slice(0, 3).map((error) => error.message),
     ],
