@@ -24,7 +24,8 @@ NLog Check-In is the Slack companion for NLog (nlog.kaila-app.com) — the Alche
 
 Contractors draft thrice-weekly productivity reports (Section 7) in NLog, then post them to the Output Reporting Channel with one click. Reports follow the Monday / Wednesday / Friday format: what you're working on, completed deliverables (grouped by deliverable, not sub-steps), pending work, blockers with a Point Person, help/confirmation asks, and ETAs.
 
-• Cadence: Mon, Wed, Fri before 9:00 AM America/New_York
+• Cadence: Mon, Wed, Fri before 9:00 PM Asia/Manila
+• Saves before 9:00 AM PHT schedule the Slack post for 8:55 PM PHT
 • Completed must match billable worklogs — same truth as your invoice
 • Prefill from worklogs or draft with Logger AI inside NLog
 • After each post, you get a DM with a link to the channel message

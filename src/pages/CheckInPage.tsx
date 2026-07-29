@@ -38,6 +38,7 @@ import { cn } from '@/lib/utils'
 import {
   fetchSlackCheckInConfigured,
   requestPostCheckInSlack,
+  requestScheduleCheckInSlack,
 } from '@/lib/checkin-client'
 import { ApiAuthError } from '@/lib/api-client'
 import { useCheckInStore } from '@/store/checkin-store'
@@ -176,8 +177,12 @@ export function CheckInPage({
   const { displayName } = useAuth()
   const historyCount = useInvoiceHistoryStore((state) => state.entries.length)
   const draft = useCheckInStore((state) => state.draft)
+  const draftUpdatedAt = useCheckInStore((state) => state.draftUpdatedAt)
   const entries = useCheckInStore((state) => state.entries)
   const setDraft = useCheckInStore((state) => state.setDraft)
+  const markDraftScheduled = useCheckInStore(
+    (state) => state.markDraftScheduled,
+  )
   const ensureDraftForSession = useCheckInStore(
     (state) => state.ensureDraftForSession,
   )
@@ -196,6 +201,7 @@ export function CheckInPage({
     null,
   )
   const [slackPosting, setSlackPosting] = useState(false)
+  const [slackScheduling, setSlackScheduling] = useState(false)
   const [slackEnabled, setSlackEnabled] = useState(false)
 
   useEffect(() => {
@@ -312,13 +318,61 @@ export function CheckInPage({
     return false
   }
 
-  const handleSave = () => {
+  const scheduleSavedDraft = async (text: string, dateLabel: string) => {
+    if (!slackEnabled) return
+    if (!draftUpdatedAt) return
+    const manilaDateKey = (value: Date) =>
+      new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(value)
+    if (manilaDateKey(new Date(draftUpdatedAt)) !== manilaDateKey(new Date())) {
+      return
+    }
+    const storageKey = `nlog-slack-schedule:${dateLabel}`
+    const previousId = localStorage.getItem(storageKey) || undefined
+    setSlackScheduling(true)
+    try {
+      const result = await requestScheduleCheckInSlack(text, previousId)
+      if (!result.scheduled) return
+      localStorage.setItem(storageKey, result.scheduledMessageId)
+      markDraftScheduled()
+      const sendTime = new Date(result.postAt * 1000).toLocaleString(
+        undefined,
+        {
+          timeZone: 'Asia/Manila',
+          weekday: 'short',
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZoneName: 'short',
+        },
+      )
+      toast.success(`Slack post scheduled for ${sendTime}.`)
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? `Saved, but Slack scheduling failed: ${error.message}`
+          : 'Saved, but Slack scheduling failed.',
+      )
+    } finally {
+      setSlackScheduling(false)
+    }
+  }
+
+  const handleSave = async () => {
     if (!validate()) {
       toast.error('Fix the highlighted fields before saving.')
       return
     }
     saveReport()
     toast.success('Check-in saved on this device.')
+    const savedDraft = useCheckInStore.getState().draft
+    await scheduleSavedDraft(
+      formatCheckInForSlack(savedDraft),
+      savedDraft.dateLabel,
+    )
   }
 
   const handleCopy = async () => {
@@ -341,7 +395,9 @@ export function CheckInPage({
       return
     }
     saveReport()
-    const text = formatCheckInForSlack(useCheckInStore.getState().draft)
+    const savedDraft = useCheckInStore.getState().draft
+    const text = formatCheckInForSlack(savedDraft)
+    await scheduleSavedDraft(text, savedDraft.dateLabel)
     try {
       await navigator.clipboard.writeText(text)
       toast.success('Saved and copied for Slack.')
@@ -409,7 +465,7 @@ export function CheckInPage({
           Contractor check-in
         </h1>
         <p className="text-sm text-nlog-slate">
-          Mon / Wed / Fri before 9am EST. Status report — not a timesheet.
+          Mon / Wed / Fri before 9:00 PM Philippine time. Status report — not a timesheet.
           Completed must match your billing invoice.
         </p>
 
@@ -560,7 +616,7 @@ export function CheckInPage({
               <>
                 <Button
                   type="button"
-                  disabled={slackPosting}
+                  disabled={slackPosting || slackScheduling}
                   onClick={() => void handleSaveAndPost()}
                 >
                   <Send className="h-4 w-4" />
@@ -569,7 +625,7 @@ export function CheckInPage({
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={slackPosting}
+                  disabled={slackPosting || slackScheduling}
                   onClick={() => void handlePostOnly()}
                 >
                   <Send className="h-4 w-4" />
@@ -582,9 +638,9 @@ export function CheckInPage({
                 Save &amp; copy for Slack
               </Button>
             )}
-            <Button type="button" variant="outline" onClick={handleSave}>
+            <Button type="button" variant="outline" disabled={slackScheduling} onClick={() => void handleSave()}>
               <Save className="h-4 w-4" />
-              Save
+              {slackScheduling ? 'Scheduling…' : 'Save'}
             </Button>
             <Button
               type="button"

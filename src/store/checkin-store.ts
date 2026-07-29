@@ -74,10 +74,12 @@ function migrateDraft(value: CheckInDraft): CheckInDraft {
 
 interface CheckInState {
   draft: CheckInDraft
+  draftUpdatedAt: string | null
   entries: CheckInReport[]
   coverageMode: CheckInCoverageMode
   setCoverageMode: (mode: CheckInCoverageMode) => void
   setDraft: (patch: Partial<CheckInDraft>) => void
+  markDraftScheduled: () => void
   replaceDraft: (draft: CheckInDraft) => void
   appendCompleted: (item?: Partial<CheckInCompletedItem>) => void
   updateCompleted: (
@@ -110,6 +112,7 @@ export const useCheckInStore = create<CheckInState>()(
   persist(
     (set, get) => ({
       draft: createEmptyDraft(),
+      draftUpdatedAt: null,
       entries: [],
       coverageMode: 'week_to_date',
 
@@ -118,7 +121,10 @@ export const useCheckInStore = create<CheckInState>()(
       setDraft: (patch) =>
         set((state) => ({
           draft: { ...state.draft, ...patch },
+          draftUpdatedAt: new Date().toISOString(),
         })),
+
+      markDraftScheduled: () => set({ draftUpdatedAt: null }),
 
       replaceDraft: (draft) => set({ draft }),
 
@@ -255,6 +261,7 @@ export const useCheckInStore = create<CheckInState>()(
         if (!entry) return false
         set({
           draft: draftFromReport(entry, { name: CHECK_IN_CONTRACTOR_NAME }),
+          draftUpdatedAt: null,
         })
         return true
       },
@@ -311,6 +318,7 @@ export const useCheckInStore = create<CheckInState>()(
             ...current.entries.filter((entry) => !isLastRecordedCheckIn(entry)),
           ].slice(0, MAX_ENTRIES),
           draft: draftFromReport(report),
+          draftUpdatedAt: null,
         }))
         return true
       },
@@ -322,23 +330,26 @@ export const useCheckInStore = create<CheckInState>()(
     }),
     {
       name: 'nlog-checkins',
-      version: 5,
+      version: 6,
       migrate: (persisted) => {
         const state = persisted as {
           draft?: CheckInDraft
           entries?: CheckInReport[]
           coverageMode?: CheckInCoverageMode
+          draftUpdatedAt?: string | null
         }
         return {
           draft: state.draft ? migrateDraft(state.draft) : createEmptyDraft(),
           entries: (state.entries ?? []).map((entry) => migrateDraft(entry) as CheckInReport),
           coverageMode: state.coverageMode ?? 'week_to_date',
+          draftUpdatedAt: state.draftUpdatedAt ?? null,
         }
       },
       partialize: (state) => ({
         draft: state.draft,
         entries: state.entries,
         coverageMode: state.coverageMode,
+        draftUpdatedAt: state.draftUpdatedAt,
       }),
     },
   ),

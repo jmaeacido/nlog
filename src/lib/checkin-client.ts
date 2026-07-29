@@ -16,6 +16,26 @@ export async function requestPostCheckInSlack(
   })
 }
 
+export type ScheduleCheckInSlackResult =
+  | {
+      ok: true
+      scheduled: true
+      scheduledMessageId: string
+      postAt: number
+    }
+  | { ok: true; scheduled: false; reason: string }
+
+export async function requestScheduleCheckInSlack(
+  text: string,
+  replaceScheduledMessageId?: string,
+): Promise<ScheduleCheckInSlackResult> {
+  return apiJson<ScheduleCheckInSlackResult>('/api/schedule-checkin-slack', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, replaceScheduledMessageId }),
+  })
+}
+
 export interface SlackCheckInConfigResponse {
   slackCheckIn: boolean
   slackUserId: string | null

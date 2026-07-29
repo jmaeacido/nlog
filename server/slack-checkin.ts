@@ -87,6 +87,88 @@ export async function postCheckInToSlack(
   return { ts: json.ts, permalink }
 }
 
+export async function scheduleCheckInToSlack(
+  config: SlackCheckInConfig,
+  text: string,
+  postAt: number,
+  replaceScheduledMessageId?: string,
+): Promise<{ scheduledMessageId: string; postAt: number }> {
+  const trimmed = text.trim()
+  if (!trimmed) throw new Error('Check-in text is empty.')
+  if (trimmed.length > 12_000) {
+    throw new Error('Check-in text is too long for Slack.')
+  }
+
+  await ensureBotInChannel(config)
+
+  if (replaceScheduledMessageId) {
+    await fetch('https://slack.com/api/chat.deleteScheduledMessage', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.botToken}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify({
+        channel: config.channelId,
+        scheduled_message_id: replaceScheduledMessageId,
+      }),
+    })
+  }
+
+  const response = await fetch('https://slack.com/api/chat.scheduleMessage', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.botToken}`,
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify({
+      channel: config.channelId,
+      text: trimmed,
+      post_at: postAt,
+      unfurl_links: false,
+      unfurl_media: false,
+    }),
+  })
+  const json = (await response.json()) as {
+    ok?: boolean
+    error?: string
+    scheduled_message_id?: string
+    post_at?: number
+  }
+  if (!json.ok || !json.scheduled_message_id) {
+    throw new Error(`Slack scheduling failed: ${json.error ?? 'unknown_error'}`)
+  }
+  return {
+    scheduledMessageId: json.scheduled_message_id,
+    postAt: json.post_at ?? postAt,
+  }
+}
+
+/** Schedule only when saved before 9:00 AM on a Mon/Wed/Fri in Manila. */
+export function getAutomaticCheckInPostAt(now = new Date()): number | null {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(now)
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? ''
+  const weekday = get('weekday')
+  if (!['Mon', 'Wed', 'Fri'].includes(weekday)) return null
+  const hour = Number(get('hour') === '24' ? '0' : get('hour'))
+  if (hour >= 9) return null
+  const year = Number(get('year'))
+  const month = Number(get('month'))
+  const day = Number(get('day'))
+  // 20:55 Asia/Manila (UTC+8) = 12:55 UTC.
+  return Math.floor(Date.UTC(year, month - 1, day, 12, 55) / 1000)
+}
+
 export async function dmSlackUser(
   botToken: string,
   slackUserId: string,

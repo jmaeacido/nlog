@@ -38,7 +38,7 @@ export type CheckInCadenceStatus =
   | { kind: 'overdue'; label: string; sinceLabel: string }
   | { kind: 'upcoming'; label: string; nextLabel: string }
 
-const EST = 'America/New_York'
+const EST = 'Asia/Manila'
 const CHECKIN_WEEKDAYS = new Set([1, 3, 5]) // Mon, Wed, Fri
 
 function estParts(date: Date = new Date()) {
@@ -608,19 +608,19 @@ export function getCheckInCadenceStatus(
 ): CheckInCadenceStatus {
   const { year, month, day, weekday, hour, minute } = estParts(date)
   const minutes = hour * 60 + minute
-  const beforeNine = minutes < 9 * 60
+  const beforeDeadline = minutes < 21 * 60
   const scope = getCheckInReportScope(date, mode)
 
   if (CHECKIN_WEEKDAYS.has(weekday)) {
-    if (beforeNine) {
+    if (beforeDeadline) {
       return {
         kind: 'due_today',
-        label: `Check-in due today before 9am EST · covers ${scope.coverage}`,
+        label: `Check-in due today before 9:00 PM PHT · auto-send at 8:55 PM when saved before 9:00 AM`,
       }
     }
     return {
       kind: 'overdue',
-      label: `Today’s check-in window has passed (due before 9am EST) · covers ${scope.coverage}`,
+      label: `Today’s check-in deadline has passed (9:00 PM PHT) · covers ${scope.coverage}`,
       sinceLabel: formatEstShort(year, month, day),
     }
   }
@@ -635,7 +635,7 @@ export function getCheckInCadenceStatus(
 
   return {
     kind: 'upcoming',
-    label: `Next check-in: Mon / Wed / Fri before 9am EST · this draft covers ${scope.coverage}`,
+    label: `Next check-in: Mon / Wed / Fri before 9:00 PM PHT · this draft covers ${scope.coverage}`,
     nextLabel: formatEstShort(next.year, next.month, next.day),
   }
 }
