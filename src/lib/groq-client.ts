@@ -79,6 +79,9 @@ export async function requestProposeCheckIn(input: {
   sourceDocuments?: Array<{
     name: string
     sourcePath: string
+    clientProject?: string
+    reportDate?: string
+    reportLabel?: string
     content: string
   }>
 }): Promise<ProposedCheckInResult> {

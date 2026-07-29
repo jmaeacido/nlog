@@ -379,6 +379,11 @@ export function CheckInPage({
           &amp; OneDrive. Generate Markdown is an invoice source only. Prefill
           and Logger include entries inside the selected report coverage.
         </p>
+        <p className="text-[11px] text-nlog-slate">
+          Name files like: Wednesday Report Draft (Hydro Boost -
+          7-29-2026).txt. The project and date in the filename determine where
+          the content belongs.
+        </p>
       </div>
 
       <div className="space-y-5">

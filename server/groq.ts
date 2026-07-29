@@ -134,6 +134,9 @@ export interface ProposeCheckInInput {
   sourceDocuments?: Array<{
     name: string
     sourcePath: string
+    clientProject?: string
+    reportDate?: string
+    reportLabel?: string
     content: string
   }>
 }
@@ -248,6 +251,8 @@ Slack output shape (match this voice):
 Field rules:
 - Status report, NOT a timesheet. Specific names/deliverables — never vague "development work".
 - sourceDocuments are ordinary text and do not need Markdown tables. Use dates and explicit status language inside them; do not invent missing facts.
+- Treat sourceDocuments.clientProject and reportDate (parsed from the filename) as authoritative. Group every section by that client/project. Do not attribute one project's content to another.
+- Ignore document content outside reportScope. When several dated documents exist for a project, use all in-scope documents chronologically and avoid repeating unchanged deliverables.
 - projects: comma-separated projects touched in the report window.
 - currentlyWorking means work actively in progress at report time, not simply the latest logged entry.
 - Leave both currentlyWorking fields empty when the evidence only shows completed work, queued work, monitoring/standby, or no explicit active item. Never promote the latest worklog automatically.
@@ -471,6 +476,9 @@ export async function proposeCheckInDraftWithGroq(
         .map((document) => ({
           name: document.name,
           sourcePath: document.sourcePath,
+          clientProject: document.clientProject,
+          reportDate: document.reportDate,
+          reportLabel: document.reportLabel,
           content: document.content.slice(0, 12_000),
         }))
     : []

@@ -12,6 +12,7 @@ import {
   summarizeEntriesForCheckInAi,
 } from '@/lib/checkin-from-worklogs'
 import { loadWorklogsForCheckIn } from '@/lib/load-worklogs-for-checkin'
+import { parseCheckInFileMetadata } from '@/lib/load-worklogs-for-checkin'
 import { requestProposeCheckIn } from '@/lib/groq-client'
 import type { ProposedCheckInResult } from '@/lib/groq-types'
 import { useCheckInStore } from '@/store/checkin-store'
@@ -100,11 +101,17 @@ function proposePayload(displayName?: string) {
         eta: draft.eta,
       },
       worklogEntries,
-      sourceDocuments: files.slice(0, 30).map((file) => ({
-        name: file.name,
-        sourcePath: file.sourcePath,
-        content: file.content.slice(0, 12_000),
-      })),
+      sourceDocuments: files.slice(0, 30).map((file) => {
+        const metadata = parseCheckInFileMetadata(file.name)
+        return {
+          name: file.name,
+          sourcePath: file.sourcePath,
+          clientProject: metadata?.clientProject,
+          reportDate: metadata?.date,
+          reportLabel: metadata?.reportLabel,
+          content: file.content.slice(0, 12_000),
+        }
+      }),
     }),
   }
 }
@@ -116,7 +123,9 @@ export async function prefillCheckInFromWorklogs(options?: {
   weekEntryCount: number
   notes: string[]
 }> {
-  const loaded = await loadWorklogsForCheckIn()
+  const store = useCheckInStore.getState()
+  const scope = getCheckInReportScope(new Date(), store.coverageMode)
+  const loaded = await loadWorklogsForCheckIn({ scope })
   if (loaded.files.length === 0) {
     return {
       applied: false,
@@ -136,9 +145,7 @@ export async function prefillCheckInFromWorklogs(options?: {
     }
   }
 
-  const store = useCheckInStore.getState()
   const draft = store.draft
-  const scope = getCheckInReportScope(new Date(), store.coverageMode)
   const result = buildCheckInPrefillFromEntries(loaded.entries, {
     scope,
     // Prefill replaces for the selected coverage window (does not keep other windows' completed)
@@ -174,7 +181,10 @@ export async function draftCheckInWithLogger(options?: {
   proposed?: ProposedCheckInResult
   notes: string[]
 }> {
-  const loaded = await loadWorklogsForCheckIn()
+  const current = useCheckInStore.getState()
+  const loaded = await loadWorklogsForCheckIn({
+    scope: getCheckInReportScope(new Date(), current.coverageMode),
+  })
   if (loaded.entries.length === 0) {
     return { applied: false, notes: loaded.notes }
   }
@@ -219,7 +229,10 @@ export async function proposeCheckInDraftOnly(options?: {
   proposed: ProposedCheckInResult | null
   notes: string[]
 }> {
-  const loaded = await loadWorklogsForCheckIn()
+  const current = useCheckInStore.getState()
+  const loaded = await loadWorklogsForCheckIn({
+    scope: getCheckInReportScope(new Date(), current.coverageMode),
+  })
   if (loaded.files.length === 0) {
     return { proposed: null, notes: loaded.notes }
   }
