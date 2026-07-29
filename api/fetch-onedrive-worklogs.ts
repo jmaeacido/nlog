@@ -15,7 +15,10 @@ export default async function handler(request: Request): Promise<Response> {
       allowedEmails: process.env.NLOG_ALLOWED_EMAILS,
     })
 
-    const body = (await request.json()) as { links?: string[] }
+    const body = (await request.json()) as {
+      links?: string[]
+      extensions?: string[]
+    }
     if (!Array.isArray(body.links) || body.links.length === 0) {
       return new Response(JSON.stringify({ error: 'links array is required' }), {
         status: 400,
@@ -47,6 +50,7 @@ export default async function handler(request: Request): Promise<Response> {
     const results = await fetchOneDriveWorklogsFromLinks(
       body.links,
       graphToken,
+      { extensions: body.extensions },
     )
     return new Response(JSON.stringify({ results }), {
       status: 200,

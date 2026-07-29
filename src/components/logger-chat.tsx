@@ -33,7 +33,7 @@ const WELCOME: LoggerChatMessage = {
 }
 
 const SUGGESTIONS = [
-  'Draft my check-in from worklogs',
+  'Draft my check-in from the Check-In text files',
   'What worklog format does NLog expect?',
   'How do I adjust worked hours?',
   'Convert my total due to PHP',
@@ -248,12 +248,12 @@ export function LoggerChat() {
         displayName: displayName || undefined,
       })
       if (!proposed) {
-        const detail = notes[0] || 'No worklog markdown available yet.'
+        const detail = notes[0] || 'No Check-In text files are available yet.'
         setMessages([
           ...nextMessages,
           {
             role: 'assistant',
-            content: `I couldn't draft a check-in yet. ${detail}\n\nLoad worklogs on Generate (or save project paths / OneDrive), then ask me again — or use Prefill from worklogs / Draft with Logger on the Check-in page.`,
+            content: `I couldn't draft a check-in yet. ${detail}\n\nAdd the current folder link under Project paths & OneDrive, make sure it contains readable .txt files, and sign in with Microsoft before trying again.`,
           },
         ])
         return
@@ -280,7 +280,7 @@ export function LoggerChat() {
         ...nextMessages,
         {
           role: 'assistant',
-          content: `I drafted a check-in from your worklogs. Review the Apply card below — nothing is written until you confirm.\n\n${preview}`,
+          content: `I drafted a check-in from the text files in your saved OneDrive links. Review the Apply card below — nothing is written until you confirm.\n\n${preview}`,
         },
       ])
     } catch (error) {

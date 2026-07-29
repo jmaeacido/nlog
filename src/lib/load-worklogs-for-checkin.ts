@@ -3,95 +3,55 @@ import { parseMultipleWorklogs } from '@/lib/parse-worklog'
 import type { WorklogEntry } from '@/lib/invoice-model'
 import {
   fetchOneDriveProjectLinks,
-  scanLocalProjectPaths,
   scannedFilesToWorklogs,
 } from '@/lib/project-paths'
-import { useInvoiceStore } from '@/store/invoice-store'
 import { useProjectPathsStore } from '@/store/project-paths-store'
 
 export interface LoadedCheckInWorklogs {
   files: WorklogFile[]
   entries: WorklogEntry[]
-  source: 'invoice' | 'project-paths' | 'none'
+  source: 'checkin-folder' | 'none'
   notes: string[]
 }
 
 /**
- * Prefer worklogs already loaded in Generate; otherwise fetch from saved
- * project paths / OneDrive links.
+ * Check-In reads text files from the OneDrive links currently saved in
+ * Project paths & OneDrive. Generate's loaded Markdown files are invoice inputs.
  */
 export async function loadWorklogsForCheckIn(): Promise<LoadedCheckInWorklogs> {
   const notes: string[] = []
-  const invoiceFiles = useInvoiceStore.getState().worklogFiles
+  const worklogs: WorklogFile[] = []
+  const links = useProjectPathsStore
+    .getState()
+    .paths.filter((entry) => entry.kind === 'onedrive')
+    .map((entry) => entry.path)
 
-  if (invoiceFiles.length > 0) {
-    const parsed = await parseMultipleWorklogs(
-      invoiceFiles.map((file) => ({
-        name: file.name,
-        content: file.content,
-      })),
-    )
-    return {
-      files: invoiceFiles,
-      entries: parsed.entries,
-      source: 'invoice',
-      notes: [
-        `Using ${invoiceFiles.length} worklog file${invoiceFiles.length === 1 ? '' : 's'} already loaded in Generate.`,
-        ...parsed.errors.slice(0, 3).map((error) => error.message),
-      ],
-    }
-  }
-
-  const paths = useProjectPathsStore.getState().paths
-  if (paths.length === 0) {
+  if (links.length === 0) {
     return {
       files: [],
       entries: [],
       source: 'none',
       notes: [
-        'No worklogs in Generate and no saved project paths. Add sources on Generate, or load worklogs first.',
+        'No OneDrive links are saved. Add a folder link under Project paths & OneDrive first.',
       ],
     }
   }
 
-  const local = paths.filter((entry) => entry.kind === 'local')
-  const onedrive = paths.filter((entry) => entry.kind === 'onedrive')
-  const worklogs: WorklogFile[] = []
-
-  if (local.length > 0) {
-    try {
-      const results = await scanLocalProjectPaths(local.map((entry) => entry.path))
-      worklogs.push(
-        ...scannedFilesToWorklogs(results.flatMap((result) => result.files)),
-      )
-      for (const result of results) {
-        if (result.error) notes.push(`${result.projectLabel}: ${result.error}`)
-      }
-    } catch (error) {
-      notes.push(
-        error instanceof Error
-          ? error.message
-          : 'Local path scan failed (often unavailable on hosted preview).',
-      )
+  try {
+    const results = await fetchOneDriveProjectLinks(
+      links,
+      { extensions: ['.txt'] },
+    )
+    worklogs.push(
+      ...scannedFilesToWorklogs(results.flatMap((result) => result.files)),
+    )
+    for (const result of results) {
+      if (result.error) notes.push(`${result.label}: ${result.error}`)
     }
-  }
-
-  if (onedrive.length > 0) {
-    try {
-      const results = await fetchOneDriveProjectLinks(
-        onedrive.map((entry) => entry.path),
-      )
-      worklogs.push(
-        ...scannedFilesToWorklogs(results.flatMap((result) => result.files)),
-      )
-      for (const result of results) {
-        if (result.error) notes.push(`${result.label}: ${result.error}`)
-      }
-    } catch (error) {
-      notes.push(
-        error instanceof Error ? error.message : 'OneDrive fetch failed.',
-      )
-    }
+  } catch (error) {
+    notes.push(
+      error instanceof Error ? error.message : 'Check-In OneDrive fetch failed.',
+    )
   }
 
   if (worklogs.length === 0) {
@@ -102,7 +62,7 @@ export async function loadWorklogsForCheckIn(): Promise<LoadedCheckInWorklogs> {
       notes:
         notes.length > 0
           ? notes
-          : ['Saved sources returned no markdown worklogs.'],
+          : ['The Check-In source folder returned no .txt files.'],
     }
   }
 
@@ -116,9 +76,9 @@ export async function loadWorklogsForCheckIn(): Promise<LoadedCheckInWorklogs> {
   return {
     files: worklogs,
     entries: parsed.entries,
-    source: 'project-paths',
+    source: 'checkin-folder',
     notes: [
-      `Loaded ${worklogs.length} markdown file${worklogs.length === 1 ? '' : 's'} from saved sources.`,
+      `Loaded ${worklogs.length} text file${worklogs.length === 1 ? '' : 's'} from ${links.length} saved OneDrive link${links.length === 1 ? '' : 's'}.`,
       ...notes,
       ...parsed.errors.slice(0, 3).map((error) => error.message),
     ],

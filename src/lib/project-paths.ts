@@ -42,13 +42,14 @@ export interface OneDriveFetchResult {
 
 export async function fetchOneDriveProjectLinks(
   links: string[],
+  options?: { extensions?: string[] },
 ): Promise<OneDriveFetchResult[]> {
   const payload = await apiJson<{ results?: OneDriveFetchResult[] }>(
     '/api/fetch-onedrive-worklogs',
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ links }),
+      body: JSON.stringify({ links, extensions: options?.extensions }),
     },
   )
 

@@ -12,11 +12,8 @@ export const checkInDraftSchema = z
     dateLabel: z.string().trim().min(1, 'Date / report label is required'),
     projects: z.string().trim().min(1, 'List every project touched since the last report'),
     currentlyWorking: z.object({
-      client: z.string().trim().min(1, 'Client is required'),
-      task: z
-        .string()
-        .trim()
-        .min(1, 'Specific task / deliverable is required'),
+      client: z.string(),
+      task: z.string(),
     }),
     completed: z.array(completedItemSchema),
     pending: z.string(),
@@ -25,10 +22,37 @@ export const checkInDraftSchema = z
       pointPerson: z.string(),
     }),
     helpFrom: z.string(),
-    eta: z.string().trim().min(1, 'ETA on the current item is required'),
+    eta: z.string(),
     weekKey: z.string(),
   })
   .superRefine((values, context) => {
+    const currentClient = values.currentlyWorking.client.trim()
+    const currentTask = values.currentlyWorking.task.trim()
+
+    if (currentClient && !currentTask) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Describe the active task, or clear the client for None',
+        path: ['currentlyWorking', 'task'],
+      })
+    }
+
+    if (currentTask && !currentClient) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Name the client, or clear the task for None',
+        path: ['currentlyWorking', 'client'],
+      })
+    }
+
+    if (currentClient && currentTask && !values.eta.trim()) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'ETA is required when an active item is set',
+        path: ['eta'],
+      })
+    }
+
     const issue = values.blocker.issue.trim()
     const pointPerson = values.blocker.pointPerson.trim()
 

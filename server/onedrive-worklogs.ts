@@ -211,12 +211,23 @@ async function downloadSharedContent(
   return response.text()
 }
 
-function isMarkdownName(name: string | undefined): boolean {
-  return Boolean(name?.toLowerCase().endsWith('.md'))
+function normalizeExtensions(extensions?: string[]): string[] {
+  const normalized = (extensions ?? ['.md'])
+    .map((extension) => extension.trim().toLowerCase())
+    .filter((extension) => /^\.[a-z0-9]+$/.test(extension))
+  return normalized.length > 0 ? [...new Set(normalized)] : ['.md']
+}
+
+function hasAcceptedExtension(
+  name: string | undefined,
+  extensions: string[],
+): boolean {
+  const lower = name?.toLowerCase() ?? ''
+  return extensions.some((extension) => lower.endsWith(extension))
 }
 
 function isFolderItem(item: DriveItem): boolean {
-  return Boolean(item.folder) || (!item.file && !isMarkdownName(item.name))
+  return Boolean(item.folder) || !item.file
 }
 
 /** First path segment becomes the project name (e.g. alchemydev-crm). */
@@ -227,7 +238,7 @@ function projectPaths(relativeDir: string, fallbackLabel: string) {
   return { project, nested }
 }
 
-async function collectMarkdownFromItem(
+async function collectFilesFromItem(
   shareId: string,
   item: DriveItem,
   shareUrl: string,
@@ -237,13 +248,14 @@ async function collectMarkdownFromItem(
   files: OneDriveWorklogFile[],
   skipped: string[],
   depth: number,
+  extensions: string[],
   accessToken?: string,
 ): Promise<void> {
   if (depth > 8 || files.length >= 120) return
 
   const name = item.name || 'item'
 
-  if (isFolderItem(item) && !isMarkdownName(name)) {
+  if (isFolderItem(item)) {
     const children = await listSharedChildren(
       shareId,
       item,
@@ -260,7 +272,7 @@ async function collectMarkdownFromItem(
             ? `${relativeDir}/${name}`
             : name
 
-      await collectMarkdownFromItem(
+      await collectFilesFromItem(
         shareId,
         child,
         shareUrl,
@@ -270,13 +282,14 @@ async function collectMarkdownFromItem(
         files,
         skipped,
         depth + 1,
+        extensions,
         accessToken,
       )
     }
     return
   }
 
-  if (!isMarkdownName(name)) {
+  if (!hasAcceptedExtension(name, extensions)) {
     if (item.file) skipped.push(name)
     return
   }
@@ -326,7 +339,9 @@ function labelFromUrl(url: string): string {
 export async function fetchOneDriveWorklogsFromLinks(
   links: string[],
   accessToken?: string,
+  options?: { extensions?: string[] },
 ): Promise<OneDriveFetchResult[]> {
+  const extensions = normalizeExtensions(options?.extensions)
   const unique = [...new Set(links.map((link) => link.trim()).filter(Boolean))]
   const results: OneDriveFetchResult[] = []
 
@@ -353,7 +368,7 @@ export async function fetchOneDriveWorklogsFromLinks(
       const rootLabel = root.name || label
       const rootDriveId = root.parentReference?.driveId
 
-      await collectMarkdownFromItem(
+      await collectFilesFromItem(
         shareId,
         root,
         link,
@@ -363,6 +378,7 @@ export async function fetchOneDriveWorklogsFromLinks(
         files,
         skipped,
         0,
+        extensions,
         accessToken,
       )
 
@@ -385,8 +401,8 @@ export async function fetchOneDriveWorklogsFromLinks(
         error:
           files.length === 0
             ? accessToken
-              ? 'No .md files found in this shared folder (including subfolders).'
-              : 'No .md files found. Sign in with Microsoft (required for modern OneDrive links).'
+              ? `No ${extensions.join(' or ')} files found in this shared folder (including subfolders).`
+              : `No ${extensions.join(' or ')} files found. Sign in with Microsoft (required for modern OneDrive links).`
             : undefined,
       })
     } catch (error) {

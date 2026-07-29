@@ -22,9 +22,13 @@ export default async function handler(request: Request): Promise<Response> {
     const apiKey = requireApiKey(process.env.GROQ_API_KEY)
     const body = (await request.json()) as ProposeCheckInInput
 
-    if (!Array.isArray(body?.worklogEntries) || body.worklogEntries.length === 0) {
+    const hasEntries =
+      Array.isArray(body?.worklogEntries) && body.worklogEntries.length > 0
+    const hasDocuments =
+      Array.isArray(body?.sourceDocuments) && body.sourceDocuments.length > 0
+    if (!hasEntries && !hasDocuments) {
       return jsonResponse(
-        { error: 'worklogEntries array is required' },
+        { error: 'Check-In text files are required' },
         400,
       )
     }

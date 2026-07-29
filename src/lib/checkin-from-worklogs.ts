@@ -147,22 +147,11 @@ export function buildCheckInPrefillFromEntries(
     completed = normalizeCompletedDeliverables(fromWorklogs)
   }
 
-  const latest = [...pool].sort((a, b) => {
-    const at = a.start?.getTime() ?? 0
-    const bt = b.start?.getTime() ?? 0
-    return bt - at
-  })[0]
-
-  const currentClient = latest.entry.project.trim() || 'General'
-  const currentTask = extractTaskTitle(latest.entry.description, currentClient)
-
   return {
     draftPatch: {
       projects: projects.join(', '),
-      currentlyWorking: {
-        client: currentClient,
-        task: currentTask,
-      },
+      // Worklogs prove work happened; they do not prove it is still active now.
+      currentlyWorking: { client: '', task: '' },
       completed: completed.length > 0 ? completed : [emptyCompletedItem()],
       // Clear period-specific fields so stale values from another coverage don't linger
       pending: '',

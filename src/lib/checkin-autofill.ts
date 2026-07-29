@@ -39,9 +39,8 @@ function proposedToDraftPatch(
   return {
     projects: proposed.projects || base.projects,
     currentlyWorking: {
-      client:
-        proposed.currentlyWorking.client || base.currentlyWorking.client,
-      task: proposed.currentlyWorking.task || base.currentlyWorking.task,
+      client: proposed.currentlyWorking.client,
+      task: proposed.currentlyWorking.task,
     },
     completed,
     pending:
@@ -76,6 +75,7 @@ function proposePayload(displayName?: string) {
     mode: coverageMode,
     buildRequest: (
       worklogEntries: ReturnType<typeof summarizeEntriesForCheckInAi>,
+      files: Awaited<ReturnType<typeof loadWorklogsForCheckIn>>['files'],
     ) => ({
       contractorName: name,
       dateLabel: formatCheckInDateLabel(new Date(), coverageMode),
@@ -100,6 +100,11 @@ function proposePayload(displayName?: string) {
         eta: draft.eta,
       },
       worklogEntries,
+      sourceDocuments: files.slice(0, 30).map((file) => ({
+        name: file.name,
+        sourcePath: file.sourcePath,
+        content: file.content.slice(0, 12_000),
+      })),
     }),
   }
 }
@@ -112,11 +117,22 @@ export async function prefillCheckInFromWorklogs(options?: {
   notes: string[]
 }> {
   const loaded = await loadWorklogsForCheckIn()
-  if (loaded.entries.length === 0) {
+  if (loaded.files.length === 0) {
     return {
       applied: false,
       weekEntryCount: 0,
       notes: loaded.notes,
+    }
+  }
+
+  // Plain-text status documents may not contain invoice-style tables.
+  // In that case use Logger's document-aware proposal path for Prefill too.
+  if (loaded.entries.length === 0) {
+    const result = await draftCheckInWithLogger(options)
+    return {
+      applied: result.applied,
+      weekEntryCount: 0,
+      notes: result.notes,
     }
   }
 
@@ -169,7 +185,9 @@ export async function draftCheckInWithLogger(options?: {
   const worklogEntries = summarizeEntriesForCheckInAi(loaded.entries, {
     scope,
   })
-  const proposed = await requestProposeCheckIn(buildRequest(worklogEntries))
+  const proposed = await requestProposeCheckIn(
+    buildRequest(worklogEntries, loaded.files),
+  )
 
   const patch = proposedToDraftPatch(
     proposed,
@@ -202,7 +220,7 @@ export async function proposeCheckInDraftOnly(options?: {
   notes: string[]
 }> {
   const loaded = await loadWorklogsForCheckIn()
-  if (loaded.entries.length === 0) {
+  if (loaded.files.length === 0) {
     return { proposed: null, notes: loaded.notes }
   }
 
@@ -210,7 +228,9 @@ export async function proposeCheckInDraftOnly(options?: {
   const worklogEntries = summarizeEntriesForCheckInAi(loaded.entries, {
     scope,
   })
-  const proposed = await requestProposeCheckIn(buildRequest(worklogEntries))
+  const proposed = await requestProposeCheckIn(
+    buildRequest(worklogEntries, loaded.files),
+  )
 
   return { proposed, notes: [...loaded.notes, ...(proposed.notes ?? [])] }
 }

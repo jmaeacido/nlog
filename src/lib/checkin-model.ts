@@ -332,17 +332,22 @@ export function formatCompletedBlockForSlack(
   )
 
   if (deliverables.length === 0) {
-    return [
-      '',
-      'Client: [name], Task: [deliverable as a whole]',
-    ]
+    return ['', 'None']
   }
 
-  const lines: string[] = ['']
+  const grouped = new Map<string, string[]>()
   for (const item of deliverables) {
     const client = item.client.trim() || '[name]'
     const task = item.task.trim() || '[deliverable as a whole]'
-    lines.push(`Client: ${client}, Task: ${task}`)
+    const tasks = grouped.get(client) ?? []
+    tasks.push(task)
+    grouped.set(client, tasks)
+  }
+
+  const lines: string[] = ['']
+  for (const [client, tasks] of grouped) {
+    lines.push(`Client: ${client}`)
+    for (const task of tasks) lines.push(`Task: ${task}`)
     lines.push('')
   }
   // Trailing blank is handled by the parent join; drop the last empty line
@@ -430,6 +435,12 @@ export function startNextDraftFrom(
 
 export function formatCheckInForSlack(draft: CheckInDraft | CheckInReport): string {
   const completedLines = formatCompletedBlockForSlack(draft.completed)
+  const currentClient = draft.currentlyWorking.client.trim()
+  const currentTask = draft.currentlyWorking.task.trim()
+  const currentLines =
+    currentClient && currentTask
+      ? [`Client: ${currentClient}`, `Task: ${currentTask}`]
+      : ['None']
 
   const blockerIssue = draft.blocker.issue.trim()
   const blockerPerson = draft.blocker.pointPerson.trim()
@@ -454,8 +465,8 @@ export function formatCheckInForSlack(draft: CheckInDraft | CheckInReport): stri
     `Project(s): ${draft.projects.trim()}`,
     '',
     'Currently working on:',
-    `Client: ${draft.currentlyWorking.client.trim()}`,
-    `Task: ${draft.currentlyWorking.task.trim()}`,
+    '',
+    ...currentLines,
     '',
     'Completed this week so far (group by deliverable, not sub-steps):',
     ...completedLines,

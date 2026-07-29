@@ -121,7 +121,7 @@ export function CheckInPage({
         displayName: displayName || undefined,
       })
       if (!result.applied) {
-        toast.error(result.notes[0] || 'Could not prefill from worklogs.')
+        toast.error(result.notes[0] || 'Could not prefill from Check-In files.')
         if (result.notes.length > 1) {
           toast.message(result.notes.slice(1, 3).join(' '))
         }
@@ -151,7 +151,7 @@ export function CheckInPage({
         displayName: displayName || undefined,
       })
       if (!result.applied) {
-        toast.error(result.notes[0] || 'Logger needs worklog markdown first.')
+        toast.error(result.notes[0] || 'Logger needs Check-In text files first.')
         return
       }
       setFieldErrors({})
@@ -160,11 +160,11 @@ export function CheckInPage({
       )
       if (rateLimited) {
         toast.message(
-          'Groq is rate-limited — filled a local draft from worklogs. Review it, or retry Logger later.',
+          'Groq is rate-limited — filled a local draft from the Check-In files. Review it, or retry Logger later.',
         )
       } else {
         toast.success(
-          'Logger drafted your check-in from worklogs. Review before saving.',
+          'Logger drafted your check-in from the Check-In text files. Review before saving.',
         )
       }
       const extra = result.proposed?.notes?.slice(0, 2).join(' ')
@@ -360,8 +360,8 @@ export function CheckInPage({
           >
             <FolderOpen className="h-4 w-4" />
             {autofilling === 'worklogs'
-              ? 'Reading worklogs…'
-              : 'Prefill from worklogs'}
+              ? 'Reading Check-In files…'
+              : 'Prefill from Check-In files'}
           </Button>
           <Button
             type="button"
@@ -375,9 +375,9 @@ export function CheckInPage({
           </Button>
         </div>
         <p className="text-[11px] text-nlog-slate">
-          Uses Generate worklogs if loaded; otherwise saved project paths /
-          OneDrive. Both Prefill and Logger only include entries inside the
-          selected report coverage.
+          Uses .txt files from the OneDrive links saved under Project paths
+          &amp; OneDrive. Generate Markdown is an invoice source only. Prefill
+          and Logger include entries inside the selected report coverage.
         </p>
       </div>
 
@@ -426,6 +426,11 @@ export function CheckInPage({
           <legend className="px-1 text-sm font-medium text-nlog-navy">
             Currently working on
           </legend>
+          <p className="text-xs text-nlog-slate">
+            Optional. Leave both fields blank when there is no active item;
+            the report will say None. Recent or completed work is not assumed
+            to still be active.
+          </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="checkin-client">Client</Label>

@@ -76,6 +76,11 @@ export async function requestProposeCheckIn(input: {
     estDate?: string
     inReportScope?: boolean
   }>
+  sourceDocuments?: Array<{
+    name: string
+    sourcePath: string
+    content: string
+  }>
 }): Promise<ProposedCheckInResult> {
   return postJson<ProposedCheckInResult>('/api/propose-checkin', input)
 }

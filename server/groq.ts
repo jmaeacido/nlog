@@ -131,6 +131,11 @@ export interface ProposeCheckInInput {
     estDate?: string
     inReportScope?: boolean
   }>
+  sourceDocuments?: Array<{
+    name: string
+    sourcePath: string
+    content: string
+  }>
 }
 
 export class GroqApiError extends Error {
@@ -216,7 +221,7 @@ Rules:
 const CHECKIN_PROPOSE_SYSTEM = `You draft Alchemy Dev Contractor Productivity Reporting check-ins for NLog.
 
 PROCESS (mandatory):
-1) Read worklogEntries for reportScope.startDate–endDate (or inReportScope=true).
+1) Read sourceDocuments (authoritative Check-In .txt files) and any parsed worklogEntries for reportScope.startDate–endDate.
 2) Write "analysis" (3–6 sentences) covering done / in-progress / next.
 3) Fill all check-in fields from that analysis. Prefer in-scope rows only.
 
@@ -237,19 +242,21 @@ segment (since last check-in):
 
 Slack output shape (match this voice):
 - Date label like "Monday, July 27, 2026 (Monday Report)"
-- Completed lines like: "Client: Alchemydev — Obsidian Quant, Task: Blog CMS — initial build (...)"
-- Group by deliverable, not sub-steps. One completed object = one deliverable.
+- Group completed deliverables under each client, with one "Task:" line per deliverable.
+- Organize pending, blockers, help, and ETAs by "Client: Alchemydev — Project" when multiple projects are present.
 
 Field rules:
 - Status report, NOT a timesheet. Specific names/deliverables — never vague "development work".
+- sourceDocuments are ordinary text and do not need Markdown tables. Use dates and explicit status language inside them; do not invent missing facts.
 - projects: comma-separated projects touched in the report window.
-- currentlyWorking.client: prefer "Client — Project" when both are known (e.g. "Alchemydev — Obsidian Quant").
-- currentlyWorking.task: deliverable name + short status (what is done, what's next for this item).
+- currentlyWorking means work actively in progress at report time, not simply the latest logged entry.
+- Leave both currentlyWorking fields empty when the evidence only shows completed work, queued work, monitoring/standby, or no explicit active item. Never promote the latest worklog automatically.
+- When active work is explicitly evidenced, currentlyWorking.client should be "Client — Project" and task should be the deliverable plus concise status.
 - completed: ONE object PER DELIVERABLE. Same client may appear on multiple rows. task = single deliverable summary (not newline-separated lists). Never invent work.
 - pending: REQUIRED when unfinished/queued work exists. Use newlines between items when listing several.
 - blocker: fill only when evidenced; never invent Point Person names. Include role/context in parentheses when helpful.
 - helpFrom: non-blocking asks; one person per line as "Name — what you need".
-- eta: REQUIRED when currentlyWorking is set. Prefer concrete dates / milestones on separate lines when there are multiple.
+- eta: required only when currentlyWorking is set. Otherwise include useful pending milestones when evidenced, or leave empty.
 - Prefer existingDraft.completed; append new deliverables as new objects (do not merge into one client row).
 Keep the JSON compact.`
 
@@ -395,7 +402,6 @@ function buildDeterministicCheckInDraft(
   const projects = [
     ...new Set(entries.map((entry) => entry.project.trim()).filter(Boolean)),
   ]
-  const latest = entries[0]
 
   const completedMap = new Map<string, { client: string; task: string }>()
   for (const item of existingDraft?.completed ?? []) {
@@ -424,23 +430,16 @@ function buildDeterministicCheckInDraft(
   const pendingFromExisting = existingDraft?.pending?.trim() || ''
   const pending =
     pendingFromExisting ||
-    analysis.signals.queuedNext.join('; ') ||
-    (latest
-      ? `Continue ${latest.project}: ${latest.description.slice(0, 100)}`
-      : '')
+    analysis.signals.queuedNext.join('; ')
 
   return {
     analysis: analysis.analysis,
     projects: projects.join(', ') || existingDraft?.projects || '',
+    // A historical worklog cannot establish what is active at report time.
+    // Preserve an explicitly entered active item; otherwise report None.
     currentlyWorking: {
-      client:
-        latest?.project?.trim() ||
-        existingDraft?.currentlyWorking?.client ||
-        '',
-      task:
-        latest?.description?.slice(0, 160) ||
-        existingDraft?.currentlyWorking?.task ||
-        '',
+      client: existingDraft?.currentlyWorking?.client?.trim() || '',
+      task: existingDraft?.currentlyWorking?.task?.trim() || '',
     },
     completed,
     pending,
@@ -456,7 +455,7 @@ function buildDeterministicCheckInDraft(
     eta:
       existingDraft?.eta?.trim() ||
       analysis.signals.etaHints[0] ||
-      (latest ? 'Before next MWF check-in' : ''),
+      '',
     notes: [reason, `Analysis: ${analysis.analysis}`],
   }
 }
@@ -465,8 +464,22 @@ export async function proposeCheckInDraftWithGroq(
   apiKey: string,
   input: ProposeCheckInInput,
 ): Promise<ProposedCheckInResult> {
-  if (!Array.isArray(input.worklogEntries) || input.worklogEntries.length === 0) {
-    throw new Error('worklogEntries are required to propose a check-in draft.')
+  const sourceDocuments = Array.isArray(input.sourceDocuments)
+    ? input.sourceDocuments
+        .filter((document) => document?.content?.trim())
+        .slice(0, 30)
+        .map((document) => ({
+          name: document.name,
+          sourcePath: document.sourcePath,
+          content: document.content.slice(0, 12_000),
+        }))
+    : []
+
+  if (
+    (!Array.isArray(input.worklogEntries) || input.worklogEntries.length === 0) &&
+    sourceDocuments.length === 0
+  ) {
+    throw new Error('Check-In text files are required to propose a draft.')
   }
 
   const scope = input.reportScope
@@ -519,8 +532,9 @@ export async function proposeCheckInDraftWithGroq(
           eta: input.existingDraft?.eta ?? '',
         },
         worklogEntries: entriesForPrompt,
+        sourceDocuments,
         instruction:
-          'First write analysis (3-6 sentences) from the worklogs for this reportScope, then fill all check-in fields from that analysis.',
+          'First write analysis (3-6 sentences) from the authoritative text documents and any parsed rows for this reportScope, then fill all check-in fields from that analysis.',
       }),
     })
 
