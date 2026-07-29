@@ -41,7 +41,7 @@ export async function postCheckInToSlack(
     throw new Error('Check-in text is too long for Slack.')
   }
 
-  await ensureBotInChannel(config)
+  const joinResult = await ensureBotInChannel(config)
 
   const response = await fetch('https://slack.com/api/chat.postMessage', {
     method: 'POST',
@@ -66,8 +66,13 @@ export async function postCheckInToSlack(
   if (!json.ok || !json.ts) {
     const detail = json.error ?? 'unknown_error'
     if (detail === 'not_in_channel') {
+      if (joinResult.error === 'missing_scope') {
+        throw new Error(
+          `Slack cannot post to the configured channel (${config.channelId}). The installed bot token is missing channels:join (and may also be missing chat:write.public). Reinstall NLog Check-In in Slack to grant the scopes in deploy/slack-app-manifest.json, then verify SLACK_CHECKIN_CHANNEL_ID matches the Output Reporting channel.`,
+        )
+      }
       throw new Error(
-        'Slack bot is not in the Output Reporting Channel. Invite it with /invite @Check-In (or your bot name) in that channel.',
+        `Slack cannot post to the configured channel (${config.channelId}). NLog Check-In may already be visible in Output Reporting, but this token is not a member of that channel. Verify SLACK_CHECKIN_CHANNEL_ID, then remove and re-add NLog Check-In to that exact channel.`,
       )
     }
     throw new Error(`Slack post failed: ${detail}`)
@@ -128,7 +133,14 @@ export function nlogSlackUserId(env: {
   return id || null
 }
 
-async function ensureBotInChannel(config: SlackCheckInConfig): Promise<void> {
+interface SlackJoinResult {
+  ok: boolean
+  error?: string
+}
+
+async function ensureBotInChannel(
+  config: SlackCheckInConfig,
+): Promise<SlackJoinResult> {
   const response = await fetch('https://slack.com/api/conversations.join', {
     method: 'POST',
     headers: {
@@ -139,9 +151,12 @@ async function ensureBotInChannel(config: SlackCheckInConfig): Promise<void> {
   })
 
   const json = (await response.json()) as { ok?: boolean; error?: string }
-  if (!json.ok && json.error !== 'already_in_channel') {
-    // Missing scope or private channel — posting may still work if bot was invited manually.
-    return
+
+  // Posting can still work after a manual invitation or with chat:write.public,
+  // so preserve the join result for a useful error only if posting then fails.
+  return {
+    ok: Boolean(json.ok || json.error === 'already_in_channel'),
+    error: json.error,
   }
 }
 

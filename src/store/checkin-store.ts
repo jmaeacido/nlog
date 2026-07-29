@@ -12,6 +12,10 @@ import {
   type CheckInDraft,
   type CheckInReport,
 } from '@/lib/checkin-model'
+import {
+  isLastRecordedCheckIn,
+  LAST_RECORDED_CHECK_IN,
+} from '@/data/last-checkin-report'
 
 const MAX_ENTRIES = 100
 
@@ -33,6 +37,8 @@ interface CheckInState {
   loadReportIntoDraft: (id: string) => boolean
   startNextCheckIn: (displayName?: string) => void
   removeEntry: (id: string) => void
+  importReport: (report: CheckInReport) => boolean
+  ensureLastRecordedCheckIn: () => boolean
   getCompletedForWeek: (weekKey?: string) => CheckInCompletedItem[]
   getEntry: (id: string) => CheckInReport | undefined
 }
@@ -206,6 +212,40 @@ export const useCheckInStore = create<CheckInState>()(
         set((state) => ({
           entries: state.entries.filter((entry) => entry.id !== id),
         })),
+
+      importReport: (report) => {
+        const exists = get().entries.some(
+          (entry) =>
+            entry.id === report.id ||
+            (entry.dateLabel === report.dateLabel &&
+              entry.name === report.name),
+        )
+        if (exists) return false
+
+        set((state) => ({
+          entries: [report, ...state.entries].slice(0, MAX_ENTRIES),
+        }))
+        return true
+      },
+
+      ensureLastRecordedCheckIn: () => {
+        const state = get()
+        const already = state.entries.some(isLastRecordedCheckIn)
+        if (already) return false
+
+        const report: CheckInReport = {
+          ...LAST_RECORDED_CHECK_IN,
+          completed: LAST_RECORDED_CHECK_IN.completed.map((item) => ({
+            ...item,
+          })),
+        }
+
+        set((current) => ({
+          entries: [report, ...current.entries].slice(0, MAX_ENTRIES),
+          draft: draftFromReport(report),
+        }))
+        return true
+      },
 
       getCompletedForWeek: (weekKey) =>
         completedLinesForWeek(get().entries, weekKey ?? getEstWeekKey()),

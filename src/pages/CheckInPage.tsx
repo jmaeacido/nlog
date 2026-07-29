@@ -83,9 +83,17 @@ export function CheckInPage({
     })
   }, [])
 
+  const ensureLastRecordedCheckIn = useCheckInStore(
+    (state) => state.ensureLastRecordedCheckIn,
+  )
+
   useEffect(() => {
     ensureDraftForSession(displayName || '')
-  }, [displayName, ensureDraftForSession])
+    const imported = ensureLastRecordedCheckIn()
+    if (imported) {
+      toast.message('Loaded your last recorded check-in (Mon Jul 27 — Obsidian Quant).')
+    }
+  }, [displayName, ensureDraftForSession, ensureLastRecordedCheckIn])
 
   const cadence = useMemo(
     () => getCheckInCadenceStatus(new Date(), coverageMode),
