@@ -2,6 +2,7 @@ import { type ReactNode, useState } from 'react'
 import { ClipboardList, FilePlus2, History, LogOut } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/auth/auth-provider'
+import { ScrollNavigation } from '@/components/scroll-navigation'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -124,6 +125,7 @@ export function AppShell({
         </div>
       </header>
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">{children}</main>
+      <ScrollNavigation />
     </div>
   )
 }
