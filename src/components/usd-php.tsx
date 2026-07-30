@@ -78,7 +78,7 @@ export function ExchangeRateBanner({
       {' · '}
       {rate.provider}
       {' · '}
-      approx. mid-market
+      PayPal rate
       {onRefresh && (
         <button
           type="button"

@@ -6,7 +6,10 @@ import {
   AuthError,
   requireAppUserFromToken,
 } from './server/auth.js'
-import { getUsdPhpRate } from './server/exchange-rate.js'
+import {
+  configureExchangeRate,
+  getUsdPhpRate,
+} from './server/exchange-rate.js'
 import {
   chatWithLogger,
   enhanceWorklogWithGroq,
@@ -74,6 +77,7 @@ export function groqApiPlugin(): Plugin {
     }
   }) => {
       const env = loadEnv(server.config.mode, server.config.root, '')
+      configureExchangeRate(env)
       const usersFilePath = path.join(server.config.root, 'data', 'users.json')
       registerFileUserStoreAdapter({
         read: readUsersFile,

@@ -25,7 +25,7 @@ Typical flow:
 - **Dual export** — PDF and XLSX from a shared invoice model
 - **Groq AI repair** — messy or partially invalid worklogs are repaired server-side before billing
 - **AI invoice report** — Review step summarizes scope, project mix, and data-quality risks
-- **USD → PHP conversion** — live mid-market rate shown on billable totals; Logger uses the same rate
+- **USD → PHP conversion** — estimated PayPal conversion rate shown on billable totals; an exact calculator rate can be entered through server configuration
 - **Invoice history** — exported invoices are saved on-device for later review and re-download
 - **Contractor check-ins** — Mon/Wed/Fri productivity reports (Alchemy Dev Section 7) with Slack-ready copy in Monday/Wednesday/Friday Report form; **Post to Slack** when `SLACK_BOT_TOKEN` + `SLACK_CHECKIN_CHANNEL_ID` are set; choose week-to-date (Sat→report day) or since-last-check-in (Mon Sat–Mon / Wed Tue–Wed / Fri Thu–Fri); prefill from worklogs or Draft with Logger; Completed is one line per deliverable and must match billing
 - **Time adjustments** — increase/decrease entry hours, bulk adjust billable rows, or add manual adjustment entries
@@ -95,6 +95,8 @@ Serve `dist/` behind your host (e.g. Apache/Laragon virtual host for `nlog.kaila
 | Env var | Purpose |
 |---|---|
 | `GROQ_API_KEY` | Server-only Groq key |
+| `PAYPAL_USD_PHP_RATE` | Optional exact USD/PHP rate copied from PayPal; takes precedence over estimation |
+| `PAYPAL_CONVERSION_SPREAD_PERCENT` | PayPal spread subtracted from the live mid-market rate; defaults to `4` |
 | `VITE_MSAL_CLIENT_ID` | Azure SPA app for Microsoft login / OneDrive |
 | `NLOG_AUTH_SECRET` | Email/password JWT signing |
 | `NLOG_REGISTER_CODE` | Optional invite code for registration |

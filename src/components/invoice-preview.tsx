@@ -114,8 +114,8 @@ export function InvoicePreview({ invoice }: { invoice: ComputedInvoice }) {
           </div>
         </dl>
         <p className="mt-3 text-xs text-nlog-slate">
-          Exported PDF/XLSX stay in USD. PHP amounts are approximate mid-market
-          conversions for your reference.
+          Exported PDF/XLSX stay in USD. PHP amounts use an estimated or
+          manually configured PayPal conversion rate for reference.
         </p>
       </Card>
 
