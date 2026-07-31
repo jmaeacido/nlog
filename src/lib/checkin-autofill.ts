@@ -141,6 +141,7 @@ function proposedToDraftPatch(
   proposed: ProposedCheckInResult,
   base: CheckInDraft,
   mode: CheckInCoverageMode,
+  reportDate: Date = new Date(),
 ): Partial<CheckInDraft> {
   const toItems = (items: Array<{ client: string; task: string }>) =>
     consolidateClientItems(
@@ -169,7 +170,7 @@ function proposedToDraftPatch(
           base.completed.length > 0 ? base.completed : [emptyCompletedItem()],
         )
 
-  const scope = getCheckInReportScope(new Date(), mode)
+  const scope = getCheckInReportScope(reportDate, mode)
 
   return {
     projects: proposed.projects || base.projects,
@@ -180,15 +181,15 @@ function proposedToDraftPatch(
     blocker: proposed.blocker.length ? toBlockers(proposed.blocker) : [emptyBlockerItem()],
     helpFrom: proposed.helpFrom.length ? toItems(proposed.helpFrom) : [emptyClientItem()],
     eta: proposed.eta.length ? toItems(proposed.eta) : [emptyClientItem()],
-    dateLabel: formatCheckInDateLabel(new Date(), mode),
+    dateLabel: formatCheckInDateLabel(reportDate, mode),
     weekKey: scope.weekKey || base.weekKey || getEstWeekKey(),
   }
 }
 
-function proposePayload(displayName?: string) {
+function proposePayload(displayName?: string, reportDate: Date = new Date()) {
   const { draft, coverageMode } = useCheckInStore.getState()
   const name = draft.name.trim() || displayName?.trim() || ''
-  const scope = getCheckInReportScope(new Date(), coverageMode)
+  const scope = getCheckInReportScope(reportDate, coverageMode)
 
   return {
     draft,
@@ -200,7 +201,7 @@ function proposePayload(displayName?: string) {
       files: Awaited<ReturnType<typeof loadWorklogsForCheckIn>>['files'],
     ) => ({
       contractorName: name,
-      dateLabel: formatCheckInDateLabel(new Date(), coverageMode),
+      dateLabel: formatCheckInDateLabel(reportDate, coverageMode),
       weekKey: scope.weekKey,
       reportScope: {
         startDate: scope.startDate,
@@ -239,13 +240,15 @@ function proposePayload(displayName?: string) {
 
 export async function prefillCheckInFromWorklogs(options?: {
   displayName?: string
+  reportDate?: Date
 }): Promise<{
   applied: boolean
   weekEntryCount: number
   notes: string[]
 }> {
   const store = useCheckInStore.getState()
-  const scope = getCheckInReportScope(new Date(), store.coverageMode)
+  const reportDate = options?.reportDate ?? new Date()
+  const scope = getCheckInReportScope(reportDate, store.coverageMode)
   const loaded = await loadWorklogsForCheckIn({ scope })
   if (loaded.files.length === 0) {
     return {
@@ -259,7 +262,7 @@ export async function prefillCheckInFromWorklogs(options?: {
   store.setDraft({
     ...localTextFilePatch(loaded.files),
     name: draft.name.trim() || options?.displayName?.trim() || draft.name,
-    dateLabel: formatCheckInDateLabel(new Date(), store.coverageMode),
+    dateLabel: formatCheckInDateLabel(reportDate, store.coverageMode),
     weekKey: scope.weekKey,
   })
   return {
@@ -274,14 +277,16 @@ export async function prefillCheckInFromWorklogs(options?: {
 
 export async function draftCheckInWithLogger(options?: {
   displayName?: string
+  reportDate?: Date
 }): Promise<{
   applied: boolean
   proposed?: ProposedCheckInResult
   notes: string[]
 }> {
   const current = useCheckInStore.getState()
+  const reportDate = options?.reportDate ?? new Date()
   const loaded = await loadWorklogsForCheckIn({
-    scope: getCheckInReportScope(new Date(), current.coverageMode),
+    scope: getCheckInReportScope(reportDate, current.coverageMode),
   })
   if (loaded.files.length === 0) {
     return { applied: false, notes: loaded.notes }
@@ -289,6 +294,7 @@ export async function draftCheckInWithLogger(options?: {
 
   const { draft, name, scope, mode, buildRequest } = proposePayload(
     options?.displayName,
+    reportDate,
   )
   const worklogEntries = summarizeEntriesForCheckInAi(loaded.entries, {
     scope,
@@ -302,10 +308,11 @@ export async function draftCheckInWithLogger(options?: {
     {
       ...draft,
       name,
-      dateLabel: formatCheckInDateLabel(new Date(), mode),
+      dateLabel: formatCheckInDateLabel(reportDate, mode),
       weekKey: scope.weekKey,
     },
     mode,
+    reportDate,
   )
 
   useCheckInStore.getState().setDraft({

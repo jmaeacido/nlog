@@ -44,6 +44,10 @@ import { ApiAuthError } from '@/lib/api-client'
 import { useCheckInStore } from '@/store/checkin-store'
 import { useInvoiceHistoryStore } from '@/store/invoice-history-store'
 
+function reportDateFromKey(dateKey: string): Date {
+  return new Date(`${dateKey}T12:00:00+08:00`)
+}
+
 function formatSavedAt(value: string): string {
   return new Date(value).toLocaleString(undefined, {
     dateStyle: 'medium',
@@ -203,6 +207,15 @@ export function CheckInPage({
   const [slackPosting, setSlackPosting] = useState(false)
   const [slackScheduling, setSlackScheduling] = useState(false)
   const [slackEnabled, setSlackEnabled] = useState(false)
+  const [reportDateKey, setReportDateKey] = useState(() =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date()),
+  )
+  const reportDate = useMemo(() => reportDateFromKey(reportDateKey), [reportDateKey])
 
   useEffect(() => {
     void fetchSlackCheckInConfigured().then(setSlackEnabled).catch(() => {
@@ -227,15 +240,15 @@ export function CheckInPage({
     [coverageMode],
   )
   const reportScope = useMemo(
-    () => getCheckInReportScope(new Date(), coverageMode),
-    [coverageMode],
+    () => getCheckInReportScope(reportDate, coverageMode),
+    [coverageMode, reportDate],
   )
 
   const handleCoverageMode = (mode: CheckInCoverageMode) => {
     setCoverageMode(mode)
     setDraft({
-      dateLabel: formatCheckInDateLabel(new Date(), mode),
-      weekKey: getCheckInReportScope(new Date(), mode).weekKey,
+      dateLabel: formatCheckInDateLabel(reportDate, mode),
+      weekKey: getCheckInReportScope(reportDate, mode).weekKey,
     })
   }
 
@@ -244,6 +257,7 @@ export function CheckInPage({
     try {
       const result = await prefillCheckInFromWorklogs({
         displayName: displayName || undefined,
+        reportDate,
       })
       if (!result.applied) {
         toast.error(result.notes[0] || 'Could not prefill from Check-In files.')
@@ -253,7 +267,7 @@ export function CheckInPage({
         return
       }
       setFieldErrors({})
-      const scope = getCheckInReportScope(new Date(), coverageMode)
+      const scope = getCheckInReportScope(reportDate, coverageMode)
       toast.success(
         `Prefilled ${result.weekEntryCount} entr${result.weekEntryCount === 1 ? 'y' : 'ies'} for ${scope.coverage}.`,
       )
@@ -274,6 +288,7 @@ export function CheckInPage({
     try {
       const result = await draftCheckInWithLogger({
         displayName: displayName || undefined,
+        reportDate,
       })
       if (!result.applied) {
         toast.error(result.notes[0] || 'Logger needs Check-In text files first.')
@@ -577,13 +592,23 @@ export function CheckInPage({
             )}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="checkin-date">Date / report</Label>
+            <Label htmlFor="checkin-reporting-date">Reporting date</Label>
             <Input
-              id="checkin-date"
-              value={draft.dateLabel}
-              onChange={(e) => setDraft({ dateLabel: e.target.value })}
-              placeholder="Monday, July 27, 2026 (Monday Report)"
+              id="checkin-reporting-date"
+              type="date"
+              value={reportDateKey}
+              onChange={(event) => {
+                if (!event.target.value) return
+                const nextKey = event.target.value
+                const nextDate = reportDateFromKey(nextKey)
+                setReportDateKey(nextKey)
+                setDraft({
+                  dateLabel: formatCheckInDateLabel(nextDate, coverageMode),
+                  weekKey: getCheckInReportScope(nextDate, coverageMode).weekKey,
+                })
+              }}
             />
+            <p className="text-xs text-nlog-slate">{draft.dateLabel}</p>
             {err('dateLabel') && (
               <p className="text-xs text-rose-700">{err('dateLabel')}</p>
             )}
