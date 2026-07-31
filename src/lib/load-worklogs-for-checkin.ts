@@ -32,9 +32,17 @@ export interface CheckInFileMetadata {
 export function parseCheckInFileMetadata(
   fileName: string,
 ): CheckInFileMetadata | null {
-  const stem = fileName.replace(/\.txt$/i, '').trim()
+  // OneDrive preserves typographic dashes and non-breaking spaces that look
+  // identical to their ASCII counterparts in the browser. Normalize them so
+  // filenames copied from Word/OneDrive still match the documented format.
+  const stem = fileName
+    .normalize('NFKC')
+    .replace(/[\u2010-\u2015\u2212]/g, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/\.txt\s*$/i, '')
+    .trim()
   const match = stem.match(
-    /^(.*?)\(\s*(.*?)\s*[-–—]\s*(\d{1,4})[-_/](\d{1,2})[-_/](\d{1,4})\s*\)\s*$/i,
+    /^(.*?)\(\s*(.*?)\s+-\s+(\d{1,4})[-_/](\d{1,2})[-_/](\d{1,4})\s*\)\s*$/i,
   )
   if (!match) return null
 
@@ -134,8 +142,9 @@ export async function loadWorklogsForCheckIn(options?: {
     })
 
     if (malformed.length > 0) {
+      const example = malformed[0]
       notes.push(
-        `Skipped ${malformed.length} .txt file${malformed.length === 1 ? '' : 's'} without a recognizable "(Project - date)" filename.`,
+        `Skipped ${malformed.length} .txt file${malformed.length === 1 ? '' : 's'} without a recognizable "(Project - date)" filename. Example: ${example}`,
       )
     }
     if (outsideScope.length > 0) {
