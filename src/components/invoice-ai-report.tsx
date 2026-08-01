@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Sparkles } from 'lucide-react'
-import type { ComputedInvoice } from '@/lib/invoice-model'
+import type { ComputedInvoice, WorklogEntry } from '@/lib/invoice-model'
 import { formatTimelineLabel } from '@/lib/timeline'
 import { formatHours, formatUsd } from '@/lib/utils'
 import { requestInvoiceReport } from '@/lib/groq-client'
@@ -10,12 +10,12 @@ import { Button } from '@/components/ui/button'
 
 export function InvoiceAiReport({
   invoice,
-  excludedCount,
-  unparseableCount,
+  excludedEntries,
+  unparseableEntries,
 }: {
   invoice: ComputedInvoice
-  excludedCount: number
-  unparseableCount: number
+  excludedEntries: WorklogEntry[]
+  unparseableEntries: WorklogEntry[]
 }) {
   const {
     invoiceReport,
@@ -55,8 +55,8 @@ export function InvoiceAiReport({
           amountUsd: item.amountUsd,
           time: item.time,
         })),
-        excludedCount,
-        unparseableCount,
+        excludedCount: excludedEntries.length,
+        unparseableCount: unparseableEntries.length,
         parseNotes: aiNotes,
       })
       setInvoiceReport(report)
@@ -154,6 +154,73 @@ export function InvoiceAiReport({
                   <li key={`risk-${index}`}>{item}</li>
                 ))}
               </ul>
+              <details className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-slate-700">
+                <summary className="cursor-pointer select-none text-xs font-semibold text-amber-800 hover:underline">
+                  View details
+                </summary>
+                <div className="mt-3 space-y-4 text-xs">
+                  {excludedEntries.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="font-semibold text-nlog-navy">
+                        Outside invoice timeline ({excludedEntries.length})
+                      </p>
+                      <p>
+                        These rows have valid timestamps, but their start time is outside {formatTimelineLabel({
+                          startDate: invoice.timelineStartDate,
+                          endDate: invoice.timelineEndDate,
+                          startTime: invoice.timelineStartTime,
+                          endTime: invoice.timelineEndTime,
+                        })}. They were not included in billed hours or totals.
+                      </p>
+                      <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                        {excludedEntries.map((entry, index) => (
+                          <div key={entry.id || `excluded-${index}`} className="rounded-md border border-amber-200 bg-white px-2.5 py-2">
+                            <div className="flex justify-between gap-3 font-medium text-nlog-navy">
+                              <span>{entry.project || 'Unassigned project'}</span>
+                              <span className="whitespace-nowrap">{formatHours(entry.qtyHours)}</span>
+                            </div>
+                            <p className="mt-1">{entry.time}</p>
+                            <p className="mt-1 text-nlog-slate">{entry.description}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {unparseableEntries.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="font-semibold text-nlog-navy">
+                        Unparseable timestamps ({unparseableEntries.length})
+                      </p>
+                      <p>
+                        These rows did not match the expected date and time-range format, so NLog could not safely determine whether they belong in the invoice.
+                      </p>
+                      <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                        {unparseableEntries.map((entry, index) => (
+                          <div key={entry.id || `unparseable-${index}`} className="rounded-md border border-amber-200 bg-white px-2.5 py-2">
+                            <p className="font-medium text-nlog-navy">{entry.project || 'Unassigned project'}</p>
+                            <p className="mt-1">Time value: {entry.time || '(blank)'}</p>
+                            <p className="mt-1 text-nlog-slate">{entry.description}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {aiNotes.length > 0 && (
+                    <div>
+                      <p className="font-semibold text-nlog-navy">Parser checks</p>
+                      <ul className="mt-1 list-disc space-y-1 pl-4">
+                        {aiNotes.map((note, index) => <li key={`parse-note-${index}`}>{note}</li>)}
+                      </ul>
+                    </div>
+                  )}
+
+                  {excludedEntries.length === 0 && unparseableEntries.length === 0 && aiNotes.length === 0 && (
+                    <p>The risk was identified from the included invoice rows by the AI review. Review the line items above for unusual hours, descriptions, or billing context.</p>
+                  )}
+                </div>
+              </details>
             </div>
           )}
 

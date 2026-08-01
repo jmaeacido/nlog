@@ -254,7 +254,10 @@ export function groqApiPlugin(): Plugin {
             const { fetchOneDriveWorklogsFromLinks } = await import(
               './server/onedrive-worklogs.js'
             )
-            const body = (await readJsonBody(req)) as { links?: string[] }
+            const body = (await readJsonBody(req)) as {
+              links?: string[]
+              extensions?: string[]
+            }
             if (!Array.isArray(body.links) || body.links.length === 0) {
               sendJson(res, 400, { error: 'links array is required' })
               return
@@ -276,6 +279,7 @@ export function groqApiPlugin(): Plugin {
             const results = await fetchOneDriveWorklogsFromLinks(
               body.links.slice(0, 12),
               graphToken,
+              { extensions: body.extensions },
             )
             sendJson(res, 200, { results })
             return

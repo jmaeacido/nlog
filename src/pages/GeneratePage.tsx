@@ -200,8 +200,8 @@ export function GeneratePage({
           />
           <InvoiceAiReport
             invoice={computedInvoice}
-            excludedCount={timelineFilter?.excluded.length ?? 0}
-            unparseableCount={timelineFilter?.unparseable.length ?? 0}
+            excludedEntries={timelineFilter?.excluded ?? []}
+            unparseableEntries={timelineFilter?.unparseable ?? []}
           />
           <InvoicePreview invoice={computedInvoice} />
           <div className="sticky bottom-0 -mx-4 border-t border-nlog-border bg-nlog-bg/95 px-4 py-4 backdrop-blur">
